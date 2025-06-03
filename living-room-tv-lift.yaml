@@ -1,0 +1,224 @@
+############################################################
+# Vogel MotionMount NEXT 7355 – on-demand BLE controller
+# (ESP32-PoE with Ethernet instead of Wi-Fi)
+############################################################
+
+substitutions:
+  mount_mac : "E4:15:F6:54:2B:78"
+  srv_uuid  : "3e6fe65d-ed78-11e4-895e-00026fd5c52c"
+  chr_ctrl  : "c005fa00-0651-4800-b000-000000000000"   # 2-byte extension
+  chr_set   : "c005fa21-0651-4800-b000-000000000000"   # 4-byte ext+rot
+  chr_rot   : "c005fa01-0651-4800-b000-000000000000"   # 2-byte rotation
+
+esphome:
+  name: living-room-tv-lift
+  friendly_name: "Living room TV lift"
+
+esp32:
+  board: esp32-poe
+  framework:
+    type: esp-idf
+
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk_mode: GPIO0_OUT
+  phy_addr: 0
+  power_pin: GPIO12
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret tv_lift_api_key
+
+ota:
+  - platform: esphome
+    password: !secret tv_lift_ota_password
+
+############################################################
+# BLE
+############################################################
+esp32_ble_tracker:
+
+ble_client:
+  - mac_address: $mount_mac
+    id: mount
+    auto_connect: false
+    on_connect:
+      - logger.log: "Mount BLE connected"
+    on_disconnect:
+      - logger.log: "Mount BLE disconnected"
+
+############################################################
+# Globals
+############################################################
+globals:
+  - id: buf
+    type: "std::array<uint8_t,8>"
+    initial_value: '{0,0,0,0,0,0,0,0}'
+  - id: len
+    type: uint8_t
+    initial_value: '0'
+  - id: ext_val
+    type: int16_t
+    initial_value: '0'
+  - id: rot_val
+    type: int16_t
+    initial_value: '0'
+
+############################################################
+# GUI sliders
+############################################################
+number:
+  - platform: template
+    id: ext_slider
+    name: "Extension %"
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    lambda: 'return id(ext_val);'
+    set_action:
+      - lambda: |-
+          id(buf)[0]    = 0x00;
+          id(buf)[1]    = uint8_t(x);
+          id(len)       = 2;
+          id(ext_val)   = int16_t(x);
+      - script.execute:
+          id: send_cmd
+          char_sel: 0
+
+  - platform: template
+    id: rot_slider
+    name: "Rotation °"
+    unit_of_measurement: "°"
+    min_value: -100
+    max_value: 100
+    step: 1
+    lambda: 'return id(rot_val);'
+    set_action:
+      - lambda: |-
+          id(buf)[0]    = 0x00;
+          id(buf)[1]    = 0x64;
+          int16_t a     = int16_t(lroundf(x));
+          id(buf)[2]    = uint8_t(uint16_t(a) >> 8);
+          id(buf)[3]    = uint8_t(a & 0xFF);
+          id(len)       = 4;
+          id(rot_val)   = a;
+      - script.execute:
+          id: send_cmd
+          char_sel: 1
+
+############################################################
+# Dropdown with three presets
+############################################################
+select:
+  - platform: template
+    name: "Position"
+    optimistic: true
+    options:
+      - "Wall"
+      - "Kitchen"
+      - "Living room"
+    set_action:
+      - if:
+          condition:
+            lambda: 'return x == "Wall";'
+          then:
+            - lambda: |-
+                const uint8_t w[2] = {0x00, 0x00};
+                memcpy(id(buf).data(), w, 2);
+                id(len)      = 2;
+                id(ext_val)  = 0;
+                id(rot_val)  = 0;
+            - script.execute:
+                id: send_cmd
+                char_sel: 0
+
+      - if:
+          condition:
+            lambda: 'return x == "Kitchen";'
+          then:
+            - lambda: |-
+                const uint8_t k[4] = {0x00, 0x64, 0xFF, 0x9C};
+                memcpy(id(buf).data(), k, 4);
+                id(len)      = 4;
+                id(ext_val)  = 100;
+                id(rot_val)  = -100;
+            - script.execute:
+                id: send_cmd
+                char_sel: 1
+
+      - if:
+          condition:
+            lambda: 'return x == "Living room";'
+          then:
+            - lambda: |-
+                const uint8_t l[4] = {0x00, 0x64, 0x00, 0x64};
+                memcpy(id(buf).data(), l, 4);
+                id(len)      = 4;
+                id(ext_val)  = 100;
+                id(rot_val)  = 100;
+            - script.execute:
+                id: send_cmd
+                char_sel: 1
+
+############################################################
+# Main BLE-write script (char_sel: 0 = ctrl | 1 = set | 2 = rot)
+############################################################
+script:
+  - id: send_cmd
+    mode: queued
+    parameters:
+      char_sel: int             # 0=ctrl | 1=set | 2=rot
+    then:
+      - esp32_ble_tracker.stop_scan
+      - ble_client.connect: mount
+      - wait_until:
+          timeout: 5s
+          condition:
+            lambda: 'return id(mount).is_ready();'
+      - if:
+          condition:
+            lambda: 'return id(mount).is_ready();'
+          then:
+            - lambda: |-
+                ESP_LOGI("BLE", "Write sel=%d len=%d", char_sel, id(len));
+            - if:
+                condition:
+                  lambda: 'return char_sel == 0;'
+                then:
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_ctrl
+                      value: !lambda |-
+                        return std::vector<uint8_t>(
+                          id(buf).begin(), id(buf).begin() + id(len));
+            - if:
+                condition:
+                  lambda: 'return char_sel == 1;'
+                then:
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_set
+                      value: !lambda |-
+                        return std::vector<uint8_t>(
+                          id(buf).begin(), id(buf).begin() + id(len));
+            - if:
+                condition:
+                  lambda: 'return char_sel == 2;'
+                then:
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_rot
+                      value: !lambda |-
+                        return std::vector<uint8_t>(
+                          id(buf).begin(), id(buf).begin() + id(len));
+      - ble_client.disconnect: mount
+      - esp32_ble_tracker.start_scan

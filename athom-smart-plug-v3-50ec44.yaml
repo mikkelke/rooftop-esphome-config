@@ -1,0 +1,18 @@
+substitutions:
+  name: athom-smart-plug-v3-50ec44
+  friendly_name: Dishwasher power plug
+packages:
+  Athom_Technology.Smart_Plug_V3: github://athom-tech/esp32-configs/athom-smart-plug.yaml
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+api:
+  encryption:
+    key: !secret dishwasher_api_key
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+

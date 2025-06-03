@@ -1,0 +1,218 @@
+esphome:
+  name: intercomproxy
+  friendly_name: "Intercomproxy"
+  on_boot:
+    - priority: 600
+      then:
+        - lock.template.publish:
+            id: front_door
+            state: LOCKED
+        - lock.template.publish:
+            id: back_door
+            state: LOCKED
+        - binary_sensor.template.publish:
+            id: doorbell_front_door
+            state: OFF
+        - binary_sensor.template.publish:
+            id: doorbell_back_door
+            state: OFF
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_FREERTOS_UNICORE: y
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+logger:
+
+api:
+  encryption:
+    key: !secret intercom_api_key
+
+ota:
+  - platform: esphome
+    password: !secret intercom_ota_password
+
+remote_receiver:
+  pin:
+    number: GPIO25
+    mode: INPUT
+  dump: [abbwelcome]
+  filter: 8us
+  tolerance:
+    type: time
+    value: 26us
+  idle: 1500us
+  buffer_size: 15kB
+  on_abbwelcome:
+    then:
+      # Uncomment to get debug
+      #- lambda: 'id(doorbell_intercom).publish_state(x.to_string().c_str());'
+
+      # Back-doorbell press
+      - if:
+          condition:
+            and:
+              - lambda: 'return x.get_message_type() == 0x01;'
+              - lambda: 'return x.get_source_address() == 0x000201;'
+              - lambda: 'return x.get_destination_address() == 0x000113;'
+          then:
+            - binary_sensor.template.publish:
+                id: doorbell_back_door
+                state: ON
+            - binary_sensor.template.publish:
+                id: doorbell_back_door
+                state: OFF
+
+      # Front-doorbell press
+      - if:
+          condition:
+            and:
+              - lambda: 'return x.get_message_type() == 0x01;'
+              - lambda: 'return x.get_source_address() == 0x000202;'
+              - lambda: 'return x.get_destination_address() == 0x000113;'
+          then:
+            - binary_sensor.template.publish:
+                id: doorbell_front_door
+                state: ON
+            - binary_sensor.template.publish:
+                id: doorbell_front_door
+                state: OFF
+
+      # Back-door unlock response
+      - if:
+          condition:
+            and:
+              - lambda: 'return x.get_message_type() == 0x8E;'
+              - lambda: 'return x.get_source_address() == 0x000401;'
+              - lambda: 'return x.get_destination_address() == 0x000113;'
+          then:
+            - lock.template.publish:
+                id: back_door
+                state: UNLOCKING
+            - delay: 3s
+            - lock.template.publish:
+                id: back_door
+                state: LOCKED
+
+      # Front-door unlock response
+      - if:
+          condition:
+            and:
+              - lambda: 'return x.get_message_type() == 0x8E;'
+              - lambda: 'return x.get_source_address() == 0x000402;'
+              - lambda: 'return x.get_destination_address() == 0x000113;'
+          then:
+            - lock.template.publish:
+                id: front_door
+                state: UNLOCKING
+            - delay: 3s
+            - lock.template.publish:
+                id: front_door
+                state: LOCKED
+
+remote_transmitter:
+  pin: GPIO26
+  carrier_duty_percent: 100%
+
+binary_sensor:
+  - platform: template
+    name: "Doorbell back door"
+    id: doorbell_back_door
+    filters:
+      - delayed_off: 1s
+  - platform: template
+    name: "Doorbell front door"
+    id: doorbell_front_door
+    filters:
+      - delayed_off: 1s
+
+sensor:
+  - platform: internal_temperature
+    name: "Internal Temperature"
+
+text_sensor:
+  - platform: template
+    name: "Doorbell Intercom"
+    id: doorbell_intercom
+    update_interval: never
+
+lock:
+  - platform: template
+    name: "Back Door"
+    id: back_door
+    lock_action:
+      - lock.template.publish:
+          id: back_door
+          state: LOCKED
+    unlock_action:
+      # 1) Hang up any ringing
+      - remote_transmitter.transmit_abbwelcome:
+          source_address:      0x000113
+          destination_address: 0x000201
+          three_byte_address:  true
+          message_type:        0x02
+          data: [0x00]
+      - delay: 100ms
+      # 2) Send the open-door command
+      - remote_transmitter.transmit_abbwelcome:
+          source_address:      0x000113
+          destination_address: 0x000401
+          three_byte_address:  true
+          message_type:        0x0E
+          data: [0x01, 0x00, 0x01]
+
+  - platform: template
+    name: "Front Door"
+    id: front_door
+    lock_action:
+      - lock.template.publish:
+          id: front_door
+          state: LOCKED
+    unlock_action:
+      - remote_transmitter.transmit_abbwelcome:
+          source_address:      0x000113
+          destination_address: 0x000202
+          three_byte_address:  true
+          message_type:        0x02
+          data: [0x00]
+      - delay: 100ms
+      - remote_transmitter.transmit_abbwelcome:
+          source_address:      0x000113
+          destination_address: 0x000402
+          three_byte_address:  true
+          message_type:        0x0E
+          data: [0x01, 0x00, 0x01]
+
+
+button:
+  - platform: restart
+    name: "Reboot"
+  - platform: safe_mode
+    name: "Reboot (Safe Mode)"
+  - platform: template
+    name: "Stop Doorbell Front Door"
+    on_press:
+      - remote_transmitter.transmit_abbwelcome:
+          source_address:      0x000113
+          destination_address: 0x000202
+          three_byte_address:  true
+          message_type:        0x02
+          data: [0x00]
+  - platform: template
+    name: "Stop Doorbell Back Door"
+    on_press:
+      - remote_transmitter.transmit_abbwelcome:
+          source_address:      0x000113
+          destination_address: 0x000201
+          three_byte_address:  true
+          message_type:        0x02
+          data: [0x00]
+
+status_led:
+  pin: GPIO2

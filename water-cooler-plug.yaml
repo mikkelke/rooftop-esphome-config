@@ -1,6 +1,6 @@
 substitutions:
-  name: athom-smart-plug-v3-50cc3c
-  friendly_name: Wine fridge power plug
+  name: water-cooler-plug
+  friendly_name: Water cooler plug
 packages:
   Athom_Technology.Smart_Plug_V3: github://athom-tech/esp32-configs/athom-smart-plug.yaml
 esphome:
@@ -9,7 +9,7 @@ esphome:
   friendly_name: ${friendly_name}
 api:
   encryption:
-    key: !secret wine_fridge_api_key
+    key: !secret water_cooler_api_key
 
 
 wifi:

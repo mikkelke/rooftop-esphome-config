@@ -49,6 +49,11 @@ remote_receiver:
     value: 26us
   idle: 1500us
   buffer_size: 15kB
+
+  # ESPHome 2026.1 uses RMT "symbols" configuration (not memory_blocks/clock_divider)
+  # ESP32 block size is 64 symbols; 320 = 5 blocks.
+  rmt_symbols: 320
+
   on_abbwelcome:
     then:
       # Uncomment to get debug
@@ -62,6 +67,7 @@ remote_receiver:
               - lambda: 'return x.get_source_address() == 0x000201;'
               - lambda: 'return x.get_destination_address() == 0x000113;'
           then:
+            # Publish a pulse: ON then OFF (delayed_off extends the ON time)
             - binary_sensor.template.publish:
                 id: doorbell_back_door
                 state: ON
@@ -77,6 +83,7 @@ remote_receiver:
               - lambda: 'return x.get_source_address() == 0x000202;'
               - lambda: 'return x.get_destination_address() == 0x000113;'
           then:
+            # Publish a pulse: ON then OFF (delayed_off extends the ON time)
             - binary_sensor.template.publish:
                 id: doorbell_front_door
                 state: ON
@@ -119,6 +126,7 @@ remote_receiver:
 remote_transmitter:
   pin: GPIO26
   carrier_duty_percent: 100%
+  non_blocking: true
 
 binary_sensor:
   - platform: template
@@ -126,6 +134,7 @@ binary_sensor:
     id: doorbell_back_door
     filters:
       - delayed_off: 1s
+
   - platform: template
     name: "Doorbell front door"
     id: doorbell_front_door
@@ -175,6 +184,7 @@ lock:
           id: front_door
           state: LOCKED
     unlock_action:
+      # 1) Hang up any ringing
       - remote_transmitter.transmit_abbwelcome:
           source_address:      0x000113
           destination_address: 0x000202
@@ -182,6 +192,7 @@ lock:
           message_type:        0x02
           data: [0x00]
       - delay: 100ms
+      # 2) Send the open-door command
       - remote_transmitter.transmit_abbwelcome:
           source_address:      0x000113
           destination_address: 0x000402
@@ -189,12 +200,13 @@ lock:
           message_type:        0x0E
           data: [0x01, 0x00, 0x01]
 
-
 button:
   - platform: restart
     name: "Reboot"
+
   - platform: safe_mode
     name: "Reboot (Safe Mode)"
+
   - platform: template
     name: "Stop Doorbell Front Door"
     on_press:
@@ -204,6 +216,7 @@ button:
           three_byte_address:  true
           message_type:        0x02
           data: [0x00]
+
   - platform: template
     name: "Stop Doorbell Back Door"
     on_press:
@@ -214,5 +227,5 @@ button:
           message_type:        0x02
           data: [0x00]
 
-status_led:
-  pin: GPIO2
+#status_led:
+#  pin: GPIO2

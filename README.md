@@ -1,6 +1,6 @@
 # Rooftop ESPHome Configuration
 
-This repository contains my ESPHome configurations for my smart home, "Rooftop". 
+ESPHome device configurations (no secrets; use `secrets.yaml` locally from `secrets.yaml.example`).
 
 ## Devices
 
@@ -26,9 +26,9 @@ This repository contains my ESPHome configurations for my smart home, "Rooftop".
 - **Inspiration:** Based on [Mat931/esp32-doorbell-bus-interface](https://github.com/Mat931/esp32-doorbell-bus-interface)
 
 ### Smart Plugs
-- **Files:** `athom-smart-plug-v3-*.yaml`
-- **Hardware:** ESP8266 (Athom Smart Plug V3)
-- **Purpose:** Power control for various devices
+- **Files:** `athom-smart-plug-v3-*.yaml`, `water-cooler-plug.yaml`
+- **Hardware:** Athom Smart Plug V3 (ESP32-C3)
+- **Purpose:** Power control (dishwasher, water cooker, water cooler)
 - **Features:**
   - Power monitoring
   - Energy tracking

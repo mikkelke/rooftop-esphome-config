@@ -1,18 +1,28 @@
 ############################################################
-# Vogel MotionMount NEXT 7355 – on-demand BLE controller
-# (ESP32-PoE with Ethernet instead of Wi-Fi)
+# Vogel MotionMount NEXT 7355 – robust sign-flip handling
+# ESP32-PoE (Ethernet). Fixes Kitchen → Living room short-stop.
 ############################################################
 
 substitutions:
-  mount_mac : "E4:15:F6:54:2B:78"
-  srv_uuid  : "3e6fe65d-ed78-11e4-895e-00026fd5c52c"
-  chr_ctrl  : "c005fa00-0651-4800-b000-000000000000"   # 2-byte extension
-  chr_set   : "c005fa21-0651-4800-b000-000000000000"   # 4-byte ext+rot
-  chr_rot   : "c005fa01-0651-4800-b000-000000000000"   # 2-byte rotation
+  mount_mac        : "E4:15:F6:54:2B:78"
+  srv_uuid         : "3e6fe65d-ed78-11e4-895e-00026fd5c52c"
+  chr_ctrl         : "c005fa00-0651-4800-b000-000000000000"   # 2-byte extension-only
+  chr_set          : "c005fa21-0651-4800-b000-000000000000"   # 4-byte ext+rot
+  chr_rot          : "c005fa01-0651-4800-b000-000000000000"   # 2-byte rotation-only
+
+  # Tuning knobs
+  safe_flip_ext    : "85"    # % extension to use while crossing through 0° on sign flip (increased for reliability)
+  interwrite_ms    : "300"   # ms between staged writes within a single connection
+  final_assert_ms  : "700"   # ms before re-asserting final target once
+  stage1_wait_s    : "3"     # seconds to wait after stage1 (safe extension) before stage2
+  stage2_wait_s    : "3"     # seconds to wait after stage2 (rotation at safe) before stage3
+  nudge_wait_s     : "2"     # seconds to wait after nudge before commit (for same-ext no-flip)
 
 esphome:
   name: living-room-tv-lift
   friendly_name: "Living room TV lift"
+  # Optional but recommended so future-you doesn't compile this on older ESPHome accidentally:
+  min_version: 2026.1.0
 
 esp32:
   board: esp32-poe
@@ -42,6 +52,10 @@ ota:
 # BLE
 ############################################################
 esp32_ble_tracker:
+  scan_parameters:
+    active: true
+    interval: 160ms
+    window: 80ms
 
 ble_client:
   - mac_address: $mount_mac
@@ -59,20 +73,42 @@ globals:
   - id: buf
     type: "std::array<uint8_t,8>"
     initial_value: '{0,0,0,0,0,0,0,0}'
-  - id: len
-    type: uint8_t
-    initial_value: '0'
   - id: ext_val
     type: int16_t
     initial_value: '0'
   - id: rot_val
     type: int16_t
     initial_value: '0'
+  - id: pending_ext
+    type: int16_t
+    initial_value: '-1'  # -1 means no pending target
+  - id: pending_rot
+    type: int16_t
+    initial_value: '-1'
+  - id: resolved_ext
+    type: int16_t
+    initial_value: '0'  # Resolved target extension for current operation
+  - id: resolved_rot
+    type: int16_t
+    initial_value: '0'  # Resolved target rotation for current operation
+  - id: operation_status
+    type: std::string
+    initial_value: '"idle"'
 
 ############################################################
-# GUI sliders
+# Status sensor for operation visibility
+############################################################
+text_sensor:
+  - platform: template
+    name: "Operation Status"
+    id: op_status_sensor
+    lambda: 'return id(operation_status);'
+
+############################################################
+# UI controls
 ############################################################
 number:
+  # Extension slider: keep current rotation
   - platform: template
     id: ext_slider
     name: "Extension %"
@@ -82,15 +118,12 @@ number:
     step: 1
     lambda: 'return id(ext_val);'
     set_action:
-      - lambda: |-
-          id(buf)[0]    = 0x00;
-          id(buf)[1]    = uint8_t(x);
-          id(len)       = 2;
-          id(ext_val)   = int16_t(x);
       - script.execute:
-          id: send_cmd
-          char_sel: 0
+          id: smart_goto
+          target_ext: !lambda 'return int16_t(lroundf(x));'
+          target_rot: !lambda 'return id(rot_val);'
 
+  # Rotation slider: at current extension (uses robust path)
   - platform: template
     id: rot_slider
     name: "Rotation °"
@@ -100,21 +133,11 @@ number:
     step: 1
     lambda: 'return id(rot_val);'
     set_action:
-      - lambda: |-
-          id(buf)[0]    = 0x00;
-          id(buf)[1]    = 0x64;
-          int16_t a     = int16_t(lroundf(x));
-          id(buf)[2]    = uint8_t(uint16_t(a) >> 8);
-          id(buf)[3]    = uint8_t(a & 0xFF);
-          id(len)       = 4;
-          id(rot_val)   = a;
       - script.execute:
-          id: send_cmd
-          char_sel: 1
+          id: smart_goto
+          target_ext: !lambda 'return id(ext_val);'
+          target_rot: !lambda 'return int16_t(lroundf(x));'
 
-############################################################
-# Dropdown with three presets
-############################################################
 select:
   - platform: template
     name: "Position"
@@ -128,97 +151,276 @@ select:
           condition:
             lambda: 'return x == "Wall";'
           then:
-            - lambda: |-
-                const uint8_t w[2] = {0x00, 0x00};
-                memcpy(id(buf).data(), w, 2);
-                id(len)      = 2;
-                id(ext_val)  = 0;
-                id(rot_val)  = 0;
             - script.execute:
-                id: send_cmd
-                char_sel: 0
+                id: smart_goto
+                target_ext: 0
+                target_rot: 0
 
       - if:
           condition:
             lambda: 'return x == "Kitchen";'
           then:
-            - lambda: |-
-                const uint8_t k[4] = {0x00, 0x64, 0xFF, 0x9C};
-                memcpy(id(buf).data(), k, 4);
-                id(len)      = 4;
-                id(ext_val)  = 100;
-                id(rot_val)  = -100;
             - script.execute:
-                id: send_cmd
-                char_sel: 1
+                id: smart_goto
+                target_ext: 100
+                target_rot: -100
 
       - if:
           condition:
             lambda: 'return x == "Living room";'
           then:
-            - lambda: |-
-                const uint8_t l[4] = {0x00, 0x64, 0x00, 0x64};
-                memcpy(id(buf).data(), l, 4);
-                id(len)      = 4;
-                id(ext_val)  = 100;
-                id(rot_val)  = 100;
             - script.execute:
-                id: send_cmd
-                char_sel: 1
+                id: smart_goto
+                target_ext: 100
+                target_rot: 100
 
 ############################################################
-# Main BLE-write script (char_sel: 0 = ctrl | 1 = set | 2 = rot)
+# Scripts
 ############################################################
 script:
-  - id: send_cmd
-    mode: queued
+  # Unified motion planner with arbitration:
+  # - Coalesces rapid commands: updates pending target instead of queuing
+  # - If extension changes → ext+rot (chr_set) + final assert
+  # - If extension same & sign flips → staged path at reduced extension: (safe,0) → (safe,tr) → (te,tr)
+  # - If extension same & no sign flip → 1% nudge then commit: (nudge,tr) → (te,tr)
+  #   In both same-extension cases, re-assert final target once more after a short pause.
+  - id: smart_goto
+    mode: restart  # Restart mode: new command cancels running one and starts fresh
     parameters:
-      char_sel: int             # 0=ctrl | 1=set | 2=rot
+      target_ext: int
+      target_rot: int
     then:
+      # Update pending target (coalescing: latest command wins)
+      - lambda: |-
+          id(pending_ext) = int16_t(target_ext);
+          id(pending_rot) = int16_t(target_rot);
+          id(operation_status) = "pending";
+          ESP_LOGI("BLE", "smart_goto: pending ext=%d rot=%d", int16_t(target_ext), int16_t(target_rot));
+
       - esp32_ble_tracker.stop_scan
       - ble_client.connect: mount
+
       - wait_until:
           timeout: 5s
           condition:
             lambda: 'return id(mount).is_ready();'
+
+      # If connect fails, recover cleanly
       - if:
           condition:
-            lambda: 'return id(mount).is_ready();'
+            lambda: 'return !id(mount).is_ready();'
           then:
+            - logger.log: "BLE not ready (timeout) - aborting motion, restarting scan"
             - lambda: |-
-                ESP_LOGI("BLE", "Write sel=%d len=%d", char_sel, id(len));
+                id(operation_status) = "idle";
+                // leave ext_val/rot_val unchanged
+            - ble_client.disconnect: mount
+            - esp32_ble_tracker.start_scan
+          else:
+            # Connected OK
+            - lambda: |-
+                // Resolve target from pending (latest wins)
+                int16_t te = (id(pending_ext) >= 0) ? id(pending_ext) : int16_t(target_ext);
+                int16_t tr = (id(pending_rot) >= 0) ? id(pending_rot) : int16_t(target_rot);
+
+                // Clear pending
+                id(pending_ext) = -1;
+                id(pending_rot) = -1;
+
+                // Clamp to safe ranges to avoid uint8 wrap surprises
+                if (te < 0) te = 0;
+                if (te > 100) te = 100;
+                if (tr < -100) tr = -100;
+                if (tr > 100) tr = 100;
+
+                id(resolved_ext) = te;
+                id(resolved_rot) = tr;
+
+                id(operation_status) = "executing";
+
+                const int16_t curr_e = id(ext_val);
+                const int16_t curr_r = id(rot_val);
+                const bool change_ext = (te != curr_e);
+                const bool sign_flip  = (int32_t(curr_r) * int32_t(tr)) < 0;
+
+                ESP_LOGI("BLE", "smart_goto executing ext=%d rot=%d (curr_e=%d curr_r=%d change_ext=%d sign_flip=%d)",
+                         te, tr, curr_e, curr_r, change_ext, sign_flip);
+
+            # A) Extension changes → single ext+rot + final assert
             - if:
                 condition:
-                  lambda: 'return char_sel == 0;'
+                  lambda: |-
+                    return id(resolved_ext) != id(ext_val);
                 then:
-                  - ble_client.ble_write:
-                      id: mount
-                      service_uuid: $srv_uuid
-                      characteristic_uuid: $chr_ctrl
-                      value: !lambda |-
-                        return std::vector<uint8_t>(
-                          id(buf).begin(), id(buf).begin() + id(len));
-            - if:
-                condition:
-                  lambda: 'return char_sel == 1;'
-                then:
+                  - lambda: |-
+                      const int16_t te = id(resolved_ext);
+                      const int16_t tr = id(resolved_rot);
+
+                      id(buf)[0] = 0x00;
+                      id(buf)[1] = uint8_t(te);
+                      id(buf)[2] = uint8_t(uint16_t(tr) >> 8);
+                      id(buf)[3] = uint8_t(uint16_t(tr) & 0xFF);
+
+                      id(operation_status) = "moving_extrot";
+                      ESP_LOGI("BLE", "move ext+rot: te=%d tr=%d", te, tr);
                   - ble_client.ble_write:
                       id: mount
                       service_uuid: $srv_uuid
                       characteristic_uuid: $chr_set
-                      value: !lambda |-
-                        return std::vector<uint8_t>(
-                          id(buf).begin(), id(buf).begin() + id(len));
-            - if:
-                condition:
-                  lambda: 'return char_sel == 2;'
-                then:
+                      value: !lambda 'return std::vector<uint8_t>(id(buf).begin(), id(buf).begin() + 4);'
+                  - delay: ${final_assert_ms}ms
+                  # Final assert (insurance)
                   - ble_client.ble_write:
                       id: mount
                       service_uuid: $srv_uuid
-                      characteristic_uuid: $chr_rot
-                      value: !lambda |-
-                        return std::vector<uint8_t>(
-                          id(buf).begin(), id(buf).begin() + id(len));
-      - ble_client.disconnect: mount
-      - esp32_ble_tracker.start_scan
+                      characteristic_uuid: $chr_set
+                      value: !lambda 'return std::vector<uint8_t>(id(buf).begin(), id(buf).begin() + 4);'
+                  - delay: ${interwrite_ms}ms
+
+            # B) Extension same & sign flip → (safe,0) → (safe,tr) → (te,tr)
+            - if:
+                condition:
+                  lambda: |-
+                    const int16_t te = id(resolved_ext);
+                    const int16_t tr = id(resolved_rot);
+                    const bool sign_flip  = (int32_t(id(rot_val)) * int32_t(tr)) < 0;
+                    return (te == id(ext_val)) && sign_flip;
+                then:
+                  # Stage 1: go to safe extension with rot=0
+                  - lambda: |-
+                      const int16_t safe = int16_t(${safe_flip_ext});
+                      int16_t s = safe;
+                      if (s < 0) s = 0;
+                      if (s > 100) s = 100;
+
+                      id(buf)[0] = 0x00;
+                      id(buf)[1] = uint8_t(s);
+                      id(buf)[2] = 0x00;  // rot = 0
+                      id(buf)[3] = 0x00;
+
+                      id(operation_status) = "stage1_safe";
+                      ESP_LOGI("BLE", "stage1: safe=%d rot=0", s);
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_set
+                      value: !lambda 'return std::vector<uint8_t>(id(buf).begin(), id(buf).begin() + 4);'
+                  - delay: ${interwrite_ms}ms
+                  - delay: ${stage1_wait_s}s
+
+                  # Stage 2: rotate to target at safe extension
+                  - lambda: |-
+                      const int16_t tr = id(resolved_rot);
+                      const int16_t safe = int16_t(${safe_flip_ext});
+                      int16_t s = safe;
+                      if (s < 0) s = 0;
+                      if (s > 100) s = 100;
+
+                      id(buf)[0] = 0x00;
+                      id(buf)[1] = uint8_t(s);
+                      id(buf)[2] = uint8_t(uint16_t(tr) >> 8);
+                      id(buf)[3] = uint8_t(uint16_t(tr) & 0xFF);
+
+                      id(operation_status) = "stage2_rotate";
+                      ESP_LOGI("BLE", "stage2: safe=%d rot=%d", s, tr);
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_set
+                      value: !lambda 'return std::vector<uint8_t>(id(buf).begin(), id(buf).begin() + 4);'
+                  - delay: ${interwrite_ms}ms
+                  - delay: ${stage2_wait_s}s
+
+                  # Stage 3: extend back to final extension with same rotation
+                  - lambda: |-
+                      const int16_t te = id(resolved_ext);
+                      const int16_t tr = id(resolved_rot);
+
+                      id(buf)[0] = 0x00;
+                      id(buf)[1] = uint8_t(te);
+                      id(buf)[2] = uint8_t(uint16_t(tr) >> 8);
+                      id(buf)[3] = uint8_t(uint16_t(tr) & 0xFF);
+
+                      id(operation_status) = "stage3_final";
+                      ESP_LOGI("BLE", "stage3: te=%d rot=%d", te, tr);
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_set
+                      value: !lambda 'return std::vector<uint8_t>(id(buf).begin(), id(buf).begin() + 4);'
+                  - delay: ${final_assert_ms}ms
+
+                  # Final assert once more (insurance)
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_set
+                      value: !lambda 'return std::vector<uint8_t>(id(buf).begin(), id(buf).begin() + 4);'
+                  - delay: ${interwrite_ms}ms
+
+            # C) Extension same & no sign flip → nudge then commit
+            - if:
+                condition:
+                  lambda: |-
+                    const int16_t te = id(resolved_ext);
+                    const int16_t tr = id(resolved_rot);
+                    const bool sign_flip  = (int32_t(id(rot_val)) * int32_t(tr)) < 0;
+                    return (te == id(ext_val)) && !sign_flip;
+                then:
+                  # 1) Nudge extension by 1% while carrying target rotation
+                  - lambda: |-
+                      const int16_t te = id(resolved_ext);
+                      const int16_t tr = id(resolved_rot);
+
+                      int16_t nudge = (te == 100) ? 99 : (te == 0 ? 1 : te - 1);
+
+                      id(buf)[0] = 0x00;
+                      id(buf)[1] = uint8_t(nudge);
+                      id(buf)[2] = uint8_t(uint16_t(tr) >> 8);
+                      id(buf)[3] = uint8_t(uint16_t(tr) & 0xFF);
+
+                      id(operation_status) = "nudging";
+                      ESP_LOGI("BLE", "nudge: %d%% rot=%d", nudge, tr);
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_set
+                      value: !lambda 'return std::vector<uint8_t>(id(buf).begin(), id(buf).begin() + 4);'
+                  - delay: ${interwrite_ms}ms
+                  - delay: ${nudge_wait_s}s
+
+                  # 2) Commit at target extension
+                  - lambda: |-
+                      const int16_t te = id(resolved_ext);
+                      const int16_t tr = id(resolved_rot);
+
+                      id(buf)[0] = 0x00;
+                      id(buf)[1] = uint8_t(te);
+                      id(buf)[2] = uint8_t(uint16_t(tr) >> 8);
+                      id(buf)[3] = uint8_t(uint16_t(tr) & 0xFF);
+
+                      id(operation_status) = "committing";
+                      ESP_LOGI("BLE", "commit: %d%% rot=%d", te, tr);
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_set
+                      value: !lambda 'return std::vector<uint8_t>(id(buf).begin(), id(buf).begin() + 4);'
+                  - delay: ${final_assert_ms}ms
+
+                  # 3) Final assert once more (insurance)
+                  - ble_client.ble_write:
+                      id: mount
+                      service_uuid: $srv_uuid
+                      characteristic_uuid: $chr_set
+                      value: !lambda 'return std::vector<uint8_t>(id(buf).begin(), id(buf).begin() + 4);'
+                  - delay: ${interwrite_ms}ms
+
+            # Update local state for UI (use resolved target)
+            - lambda: |-
+                id(ext_val) = id(resolved_ext);
+                id(rot_val) = id(resolved_rot);
+                id(operation_status) = "idle";
+
+            - ble_client.disconnect: mount
+            - esp32_ble_tracker.start_scan

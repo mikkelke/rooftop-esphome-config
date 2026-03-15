@@ -10,12 +10,6 @@ esphome:
   name_add_mac_suffix: false
   friendly_name: ${friendly_name}
 
-esp32:
-  board: esp32-c3-devkitm-1
-  framework:
-    type: arduino
-  flash_size: 4MB                          # specify flash size here (not in platformio_options)
-
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
@@ -25,4 +19,4 @@ api:
     key: !secret dishwasher_api_key
 
 ota:
-  - platform: web_server                   # keep browser OTA
+  - platform: web_server

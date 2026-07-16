@@ -57,7 +57,7 @@ remote_receiver:
   on_abbwelcome:
     then:
       # Uncomment to get debug
-      #- lambda: 'id(doorbell_intercom).publish_state(x.to_string().c_str());'
+      - lambda: 'char buf[esphome::remote_base::ABBWelcomeData::FORMAT_BUFFER_SIZE]; id(doorbell_intercom).publish_state(x.format_to(buf));'
 
       # Back-doorbell press
       - if:

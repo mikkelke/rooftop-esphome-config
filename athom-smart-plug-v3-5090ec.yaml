@@ -1,0 +1,17 @@
+substitutions:
+  name: athom-smart-plug-v3-5090ec
+  friendly_name: Yale power plug
+packages:
+  Athom Technology.Smart Plug V3: github://athom-tech/esp32-configs/athom-smart-plug.yaml
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+api:
+  encryption:
+    key: FvNtmsLTaySFKW5oZvFDVwp6XulGazcZ7tdqlf8aocQ=
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password

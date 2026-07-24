@@ -1,6 +1,6 @@
 substitutions:
   name: athom-smart-plug-v3-5090ec
-  friendly_name: Yale power plug
+  friendly_name: Yale proxy plug
 
 packages:
   Athom_Technology.Smart_Plug_V3: github://athom-tech/esp32-configs/athom-smart-plug.yaml

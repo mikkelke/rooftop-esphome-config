@@ -1,0 +1,19 @@
+substitutions:
+  name: bed-presence-6b9c94
+  friendly_name: Bed Presence 6b9c94
+
+packages:
+  ElevatedSensors.BedPresenceMk1: github://ElevatedSensors/sensor-configs/bed-presence-mk1.yaml@main?full_config
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+  encryption:
+    key: !secret bed_presence_api_key

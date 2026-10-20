@@ -39,10 +39,10 @@ one_wire:
 
 sensor:
   - platform: dallas_temp
-    index: 0
-    name: Floor heating probe 1
+    address: 0xb200000050925228
+    name: Floor heating supply
     update_interval: 15s
   - platform: dallas_temp
-    index: 1
-    name: Floor heating probe 2
+    address: 0x66000000bb9c0528
+    name: Floor heating return
     update_interval: 15s

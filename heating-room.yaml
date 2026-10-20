@@ -11,9 +11,16 @@ esp32:
   framework:
     type: esp-idf
 
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
+# Olimex ESP32-PoE2 (WROVER-E): LAN8720 PHY powered by GPIO12, RMII clock driven out on GPIO0.
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk:
+    pin: GPIO0
+    mode: CLK_OUT
+  phy_addr: 0
+  power_pin: GPIO12
 
 logger:
 

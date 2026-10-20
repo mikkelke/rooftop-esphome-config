@@ -46,27 +46,3 @@ sensor:
     index: 1
     name: Floor heating probe 2
     update_interval: 15s
-
-  # Reed contacts close to GND when the meter's magnet passes. UEXT pin 3 (GPIO4) has no board pull-up.
-  - platform: pulse_meter
-    name: Cold water flow
-    pin:
-      number: GPIO4
-      mode:
-        input: true
-        pullup: true
-      inverted: true
-    internal_filter: 50ms
-    unit_of_measurement: pulses/min
-    total:
-      name: Cold water pulses
-  # UEXT pin 6 (GPIO13) has a 10 kΩ pull-up on the board.
-  - platform: pulse_meter
-    name: Hot water flow
-    pin:
-      number: GPIO13
-      inverted: true
-    internal_filter: 50ms
-    unit_of_measurement: pulses/min
-    total:
-      name: Hot water pulses

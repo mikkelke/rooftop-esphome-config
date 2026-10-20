@@ -1,0 +1,72 @@
+substitutions:
+  name: heating-room
+  friendly_name: Heating room
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Olimex ESP32-PoE2 (WROVER-E): LAN8720 PHY powered by GPIO12, RMII clock driven out on GPIO0.
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk:
+    pin: GPIO0
+    mode: CLK_OUT
+  phy_addr: 0
+  power_pin: GPIO12
+
+logger:
+
+api:
+  encryption:
+    key: !secret heating_room_api_key
+
+ota:
+  - platform: esphome
+    password: !secret heating_room_ota_password
+
+# UEXT pin 5 (GPIO33) has a 2.2 kΩ pull-up on the board, so the 1-Wire bus needs no extra resistor.
+one_wire:
+  - platform: gpio
+    pin: GPIO33
+
+sensor:
+  - platform: dallas_temp
+    index: 0
+    name: Floor heating probe 1
+    update_interval: 15s
+  - platform: dallas_temp
+    index: 1
+    name: Floor heating probe 2
+    update_interval: 15s
+
+  # Reed contacts close to GND when the meter's magnet passes. UEXT pin 3 (GPIO4) has no board pull-up.
+  - platform: pulse_meter
+    name: Cold water flow
+    pin:
+      number: GPIO4
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    internal_filter: 50ms
+    unit_of_measurement: pulses/min
+    total:
+      name: Cold water pulses
+  # UEXT pin 6 (GPIO13) has a 10 kΩ pull-up on the board.
+  - platform: pulse_meter
+    name: Hot water flow
+    pin:
+      number: GPIO13
+      inverted: true
+    internal_filter: 50ms
+    unit_of_measurement: pulses/min
+    total:
+      name: Hot water pulses

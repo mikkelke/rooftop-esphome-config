@@ -1,12 +1,19 @@
 substitutions:
   name: bathroom-display
   friendly_name: Bathroom display
+  speaker: media_player.bathroom
+  wake_ms: "30000"
+  vol_step: "0.04"
+  ha_url: "http://10.21.0.5:8123"
 
 # VIEWE SmartRing 1.75" (factory SKU viewe-uedx46460-1.75): ESP32-S3R8, 16 MB flash,
 # 466x466 CO5300 AMOLED on QSPI, CST816S touch. Pins per VIEWESMART/VIEWE-SMARTRING.
+# What to show comes from sensor.bathroom_display (AppDaemon BathroomDisplay): off | someone | mikkel.
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
+  includes:
+    - bathroom-display/mdi_glyph.h
 
 esp32:
   variant: esp32s3
@@ -35,6 +42,7 @@ wifi:
 time:
   - platform: homeassistant
     id: ha_time
+    timezone: Europe/Copenhagen
 
 esp32_ble_tracker:
   scan_parameters:
@@ -91,60 +99,356 @@ touchscreen:
       ignore_strapping_warning: true
     skip_probe: true
     on_touch:
-      - logger.log:
-          format: "touch x=%d y=%d"
-          args: [touch.x, touch.y]
+      - lambda: id(awake_until) = millis() + ${wake_ms};
+      - script.execute: pick_page
 
-lvgl:
-  displays: [amoled]
-  touchscreens: [touch]
-  buffer_size: 100%
-  bg_color: 0x000000
-  pages:
-    - id: bringup
-      bg_color: 0x000000
-      widgets:
-        - arc:
-            id: ring
-            align: CENTER
-            width: 456
-            height: 456
-            start_angle: 0
-            end_angle: 360
-            value: 100
-            arc_color: 0x202020
-            arc_width: 10
-            indicator:
-              arc_color: 0xFF0000
-              arc_width: 10
-            knob:
-              opa: TRANSP
-        - label:
-            id: clock_label
-            align: CENTER
-            y: -40
-            text_font: montserrat_48
-            text_color: 0xFFFFFF
-            text: "--:--"
-        - label:
-            align: CENTER
-            y: 30
-            text_font: montserrat_28
-            text_color: 0x00FF00
-            text: "green"
-        - label:
-            align: CENTER
-            y: 75
-            text_font: montserrat_28
-            text_color: 0x0000FF
-            text: "blue"
-        - label:
-            id: rssi_label
-            align: CENTER
-            y: 130
-            text_font: montserrat_20
-            text_color: 0x909090
-            text: "phone: -"
+globals:
+  - id: awake_until
+    type: uint32_t
+    initial_value: "0"
+  - id: blank_shown
+    type: bool
+    initial_value: "true"
+  - id: night
+    type: bool
+    initial_value: "false"
+  - id: has_cover
+    type: bool
+    initial_value: "false"
+
+http_request:
+  verify_ssl: false
+  timeout: 10s
+
+image:
+  - platform: online_image
+    id: cover_art
+    url: ${ha_url}
+    format: AUTO
+    type: RGB565
+    resize: 96x96
+    on_download_finished:
+      - lambda: |-
+          lv_image_set_src(id(cover), id(cover_art));
+          id(has_cover) = true;
+      - script.execute: paint_media
+    on_error:
+      - lambda: id(has_cover) = false;
+      - script.execute: paint_media
+  - platform: file
+    defaults:
+      type: RGB565
+      resize: 96x96
+    files:
+      - {id: dr_p1, file: bathroom-display/dr/p1.png}
+      - {id: dr_p2, file: bathroom-display/dr/p2.png}
+      - {id: dr_p3, file: bathroom-display/dr/p3.png}
+      - {id: dr_p4, file: bathroom-display/dr/p4.png}
+      - {id: dr_p5, file: bathroom-display/dr/p5.png}
+      - {id: dr_p6beat, file: bathroom-display/dr/p6beat.png}
+      - {id: dr_p8jazz, file: bathroom-display/dr/p8jazz.png}
+
+font:
+  - file: "gfonts://Inter@300"
+    id: f_clock
+    size: 108
+    glyphs: "0123456789:-"
+  - file: "gfonts://Inter@500"
+    id: f_greet
+    size: 18
+    glyphsets: [GF_Latin_Core]
+  - file: "gfonts://Inter@400"
+    id: f_text
+    size: 20
+    glyphsets: [GF_Latin_Core]
+  - file: "gfonts://Inter@500"
+    id: f_label
+    size: 14
+    glyphsets: [GF_Latin_Core]
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
+    id: f_icon
+    size: 26
+    glyphs: ["\U000F0068", "\U000F18E5", "\U000F10CD", "\U000F12A4", "\U000F19E6", "\U000F1835", "\U000F0A30", "\U000F0D5D", "\U000F05E1", "\U000F109F", "\U000F0AAC", "\U000F081C", "\U000F024A", "\U000F0625", "\U000F02DA", "\U000F02FD", "\U000F0319", "\U000F032A", "\U000F0FC6", "\U000F0374", "\U000F0A07", "\U000F075A", "\U000F0387", "\U000F03E4", "\U000F040A", "\U000F0415", "\U000F0439", "\U000F070D", "\U000F04AD", "\U000F04AE", "\U000F04C7", "\U000F0665", "\U000F0E66", "\U000F0502", "\U000F11FC", "\U000F052C", "\U000F0917", "\U000F19A1", "\U000F072A", "\U000F058C", "\U000F1482", "\U000F0590", "\U000F0591", "\U000F0592", "\U000F0593", "\U000F067E", "\U000F0594", "\U000F0595", "\U000F0596", "\U000F0597", "\U000F0598", "\U000F067F", "\U000F0599", "\U000F059D", "\U000F059E"]
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
+    id: f_icon_s
+    size: 22
+    glyphs: ["\U000F0068", "\U000F18E5", "\U000F10CD", "\U000F12A4", "\U000F19E6", "\U000F1835", "\U000F0A30", "\U000F0D5D", "\U000F05E1", "\U000F109F", "\U000F0AAC", "\U000F081C", "\U000F024A", "\U000F0625", "\U000F02DA", "\U000F02FD", "\U000F0319", "\U000F032A", "\U000F0FC6", "\U000F0374", "\U000F0A07", "\U000F075A", "\U000F0387", "\U000F03E4", "\U000F040A", "\U000F0415", "\U000F0439", "\U000F070D", "\U000F04AD", "\U000F04AE", "\U000F04C7", "\U000F0665", "\U000F0E66", "\U000F0502", "\U000F11FC", "\U000F052C", "\U000F0917", "\U000F19A1", "\U000F072A", "\U000F058C", "\U000F1482", "\U000F0590", "\U000F0591", "\U000F0592", "\U000F0593", "\U000F067E", "\U000F0594", "\U000F0595", "\U000F0596", "\U000F0597", "\U000F0598", "\U000F067F", "\U000F0599", "\U000F059D", "\U000F059E"]
+
+script:
+  - id: pick_page
+    then:
+      - if:
+          condition:
+            lambda: return id(blank_shown) && (id(view).state != "off" || millis() < id(awake_until));
+          then:
+            - lambda: id(blank_shown) = false;
+            - lvgl.page.show: main_page
+      - if:
+          condition:
+            lambda: return !id(blank_shown) && id(view).state == "off" && millis() >= id(awake_until);
+          then:
+            - lambda: id(blank_shown) = true;
+            - lvgl.page.show: blank_page
+  - id: paint_weather
+    then:
+      - lambda: |-
+          static const std::map<std::string, std::string> icon = {
+            {"clear-night", "mdi:weather-night"}, {"cloudy", "mdi:weather-cloudy"},
+            {"exceptional", "mdi:help-circle-outline"}, {"fog", "mdi:weather-fog"}, {"hail", "mdi:weather-hail"},
+            {"lightning", "mdi:weather-lightning"}, {"lightning-rainy", "mdi:weather-lightning-rainy"},
+            {"partlycloudy", "mdi:weather-partly-cloudy"}, {"pouring", "mdi:weather-pouring"},
+            {"rainy", "mdi:weather-rainy"}, {"snowy", "mdi:weather-snowy"}, {"snowy-rainy", "mdi:weather-snowy-rainy"},
+            {"sunny", "mdi:weather-sunny"}, {"windy", "mdi:weather-windy"}, {"windy-variant", "mdi:weather-windy-variant"}};
+          const std::string &w = id(weather_state).state;
+          auto it = icon.find(w);
+          lv_label_set_text(id(weather_icon), mdi_glyph(it != icon.end() ? it->second : "").c_str());
+          uint32_t tint = 0x94A3B8;
+          if (w == "sunny" || w == "lightning" || w == "lightning-rainy") tint = 0xFBBF24;
+          else if (w == "partlycloudy") tint = 0xFCD34D;
+          else if (w == "rainy" || w == "pouring" || w == "hail") tint = 0x38BDF8;
+          else if (w == "snowy" || w == "snowy-rainy") tint = 0xE0F2FE;
+          else if (w == "clear-night") tint = 0xC4B5FD;
+          lv_obj_set_style_text_color(id(weather_icon), lv_color_hex(tint), LV_PART_MAIN);
+          char buf[16];
+          if (std::isnan(id(outdoor_temp).state)) buf[0] = 0;
+          else snprintf(buf, sizeof(buf), "%.0f°", id(outdoor_temp).state);
+          lv_label_set_text(id(weather_text), buf);
+          lv_obj_clear_flag(id(weather_icon), LV_OBJ_FLAG_HIDDEN);
+  - id: show_detail
+    mode: restart
+    parameters:
+      n: int
+    then:
+      - lambda: |-
+          const std::string *lines[3] = {&id(line1).state, &id(line2).state, &id(line3).state};
+          lv_obj_add_flag(id(weather_icon), LV_OBJ_FLAG_HIDDEN);
+          lv_label_set_text(id(weather_text), lines[n]->c_str());
+      - delay: 6s
+      - script.execute: paint_weather
+  - id: paint
+    then:
+      - lambda: |-
+          bool me = id(view).state == "mikkel";
+          lv_obj_set_style_arc_color(id(ring), lv_color_hex(me ? 0xFBBF24 : 0x38BDF8), LV_PART_INDICATOR);
+          lv_label_set_text(id(greet_label), me ? id(greeting).state.c_str() : "");
+          lv_obj_t *chips[3] = {id(chip1), id(chip2), id(chip3)};
+          lv_obj_t *bubbles[3] = {id(chip1_btn), id(chip2_btn), id(chip3_btn)};
+          lv_obj_t *icons[3] = {id(chip1_icon), id(chip2_icon), id(chip3_icon)};
+          lv_obj_t *labels[3] = {id(chip1_label), id(chip2_label), id(chip3_label)};
+          const std::string *lines[3] = {&id(line1).state, &id(line2).state, &id(line3).state};
+          const std::string *glyphs[3] = {&id(icon1).state, &id(icon2).state, &id(icon3).state};
+          const std::string *dues[3] = {&id(due1).state, &id(due2).state, &id(due3).state};
+          for (int i = 0; i < 3; i++) {
+            if (!me || lines[i]->empty()) { lv_obj_add_flag(chips[i], LV_OBJ_FLAG_HIDDEN); continue; }
+            lv_obj_clear_flag(chips[i], LV_OBJ_FLAG_HIDDEN);
+            const std::string &due = *dues[i];
+            bool late = due == "overdue";
+            std::string when = late ? "nu" : due == "today" ? "i dag" : due == "tomorrow" ? "i morgen" : due;
+            lv_label_set_text(icons[i], mdi_glyph(*glyphs[i]).c_str());
+            lv_label_set_text(labels[i], when.c_str());
+            auto fg = late ? lv_color_hex(0xFB7185) : lv_color_hex(0xE4E4E7);
+            lv_obj_set_style_text_color(icons[i], fg, LV_PART_MAIN);
+            lv_obj_set_style_text_color(labels[i], late ? fg : lv_color_hex(0xA1A1AA), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(bubbles[i], late ? lv_color_hex(0x231013) : lv_color_hex(0x161618), LV_PART_MAIN);
+          }
+      - script.execute: paint_media
+      - script.execute: pick_page
+  - id: paint_media
+    then:
+      - lambda: |-
+          bool me = id(view).state == "mikkel";
+          bool playing = id(speaker_state).state == "playing";
+          lv_label_set_text(id(play_icon), mdi_glyph(playing ? "mdi:pause" : "mdi:play").c_str());
+          if (id(has_cover)) {
+            lv_obj_clear_flag(id(cover), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_opa(id(play_btn), LV_OPA_TRANSP, LV_PART_MAIN);
+            lv_obj_set_style_text_color(id(play_icon), lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            if (playing) {
+              lv_obj_add_flag(id(cover_dim), LV_OBJ_FLAG_HIDDEN);
+              lv_obj_add_flag(id(play_icon), LV_OBJ_FLAG_HIDDEN);
+            } else {
+              lv_obj_clear_flag(id(cover_dim), LV_OBJ_FLAG_HIDDEN);
+              lv_obj_clear_flag(id(play_icon), LV_OBJ_FLAG_HIDDEN);
+            }
+          } else {
+            lv_obj_add_flag(id(cover), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(cover_dim), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(play_icon), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_opa(id(play_btn), LV_OPA_COVER, LV_PART_MAIN);
+            lv_obj_set_style_bg_color(id(play_btn), lv_color_hex(me ? 0xFBBF24 : 0x38BDF8), LV_PART_MAIN);
+            lv_obj_set_style_text_color(id(play_icon), lv_color_hex(0x000000), LV_PART_MAIN);
+          }
+  - id: load_cover
+    then:
+      - lambda: |-
+          static const std::pair<const char *, image::Image *> dr[] = {
+            {"/media/p1.", id(dr_p1)}, {"/media/p2.", id(dr_p2)}, {"/media/p3.", id(dr_p3)},
+            {"/media/p4.", id(dr_p4)}, {"/media/p5.", id(dr_p5)}, {"/media/p6beat.", id(dr_p6beat)},
+            {"/media/p8jazz.", id(dr_p8jazz)}};
+          const std::string &pic = id(media_picture).state;
+          id(has_cover) = false;
+          if (pic.find("dr.dk/lyd/") != std::string::npos) {
+            for (auto &d : dr) {
+              if (pic.find(d.first) == std::string::npos) continue;
+              lv_image_set_src(id(cover), d.second);
+              id(has_cover) = true;
+              break;
+            }
+          } else if (!pic.empty()) {
+            // Spotify's 640 px cover often exceeds the 64 KB JPEG buffer; its 300 px variant does not.
+            std::string url = pic;
+            auto at = url.find("ab67616d0000b273");
+            if (url.find("i.scdn.co/image/") != std::string::npos && at != std::string::npos)
+              url.replace(at, 16, "ab67616d00001e02");
+            else if (!id(media_picture_local).state.empty())
+              url = std::string("${ha_url}") + id(media_picture_local).state;
+            id(cover_art).set_url(url);
+            id(cover_art).update();
+          }
+      - script.execute: paint_media
+  - id: paint_title
+    then:
+      - lambda: |-
+          auto usable = [](const std::string &v) {
+            std::string l = v;
+            for (auto &c : l) c = tolower(c);
+            return !l.empty() && l != "no desc" && l != "unknown" && l.rfind("playlist", 0) != 0;
+          };
+          const std::string &title = id(media_title).state, &artist = id(media_artist).state, &album = id(media_album).state;
+          std::string text;
+          if (!usable(title)) text = usable(album) ? album : "";
+          else if (usable(artist)) text = artist + " – " + title;
+          else text = title;
+          lv_label_set_text(id(title_label), text.c_str());
+  - id: step_volume
+    parameters:
+      delta: float
+    then:
+      - homeassistant.action:
+          action: media_player.volume_set
+          data:
+            entity_id: ${speaker}
+          data_template:
+            volume_level: "{{ v }}"
+          variables:
+            v: !lambda 'return std::to_string(std::clamp(roundf((id(speaker_volume).state + delta) * 100) / 100, 0.0f, 1.0f));'
+
+text_sensor:
+  - platform: homeassistant
+    id: view
+    entity_id: sensor.bathroom_display
+    on_value:
+      - script.execute: paint
+  - platform: homeassistant
+    id: greeting
+    entity_id: sensor.bathroom_display
+    attribute: greeting
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: line1
+    entity_id: sensor.bathroom_display
+    attribute: line1
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: line2
+    entity_id: sensor.bathroom_display
+    attribute: line2
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: line3
+    entity_id: sensor.bathroom_display
+    attribute: line3
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: icon1
+    entity_id: sensor.bathroom_display
+    attribute: icon1
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: icon2
+    entity_id: sensor.bathroom_display
+    attribute: icon2
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: icon3
+    entity_id: sensor.bathroom_display
+    attribute: icon3
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: due1
+    entity_id: sensor.bathroom_display
+    attribute: due1
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: due2
+    entity_id: sensor.bathroom_display
+    attribute: due2
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: due3
+    entity_id: sensor.bathroom_display
+    attribute: due3
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: weather_state
+    entity_id: weather.forecast_home
+    on_value: [script.execute: paint_weather]
+  - platform: homeassistant
+    id: speaker_state
+    entity_id: ${speaker}
+    on_value: [script.execute: paint_media]
+  - platform: homeassistant
+    id: media_title
+    entity_id: ${speaker}
+    attribute: media_title
+    on_value: [script.execute: paint_title]
+  - platform: homeassistant
+    id: media_artist
+    entity_id: ${speaker}
+    attribute: media_artist
+    on_value: [script.execute: paint_title]
+  - platform: homeassistant
+    id: media_album
+    entity_id: ${speaker}
+    attribute: media_album_name
+    on_value: [script.execute: paint_title]
+  - platform: homeassistant
+    id: media_picture
+    entity_id: ${speaker}
+    attribute: entity_picture
+    on_value: [script.execute: load_cover]
+  - platform: homeassistant
+    id: media_picture_local
+    entity_id: ${speaker}
+    attribute: entity_picture_local
+
+sensor:
+  - platform: homeassistant
+    id: outdoor_temp
+    entity_id: weather.forecast_home
+    attribute: temperature
+    on_value: [script.execute: paint_weather]
+  - platform: homeassistant
+    id: speaker_volume
+    entity_id: ${speaker}
+    attribute: volume_level
+    on_value:
+      - lvgl.arc.update:
+          id: ring
+          value: !lambda 'return std::isnan(x) ? 0 : (int) roundf(x * 100);'
+  - platform: homeassistant
+    id: speaker_duration
+    entity_id: ${speaker}
+    attribute: media_duration
+  - platform: ble_rssi
+    id: mikkel_phone_rssi
+    name: Mikkel phone RSSI
+    ibeacon_uuid: D6462F88-9442-42DB-9E31-BDFF598EDC25
+    ibeacon_major: 100
+    ibeacon_minor: 40004
+    filters:
+      - throttle_average: 2s
+      - timeout: 15s
 
 interval:
   - interval: 1s
@@ -153,19 +457,328 @@ interval:
           id: clock_label
           text: !lambda |-
             auto t = id(ha_time).now();
-            if (!t.is_valid()) return std::string("--:--");
-            return t.strftime("%H:%M:%S");
+            return t.is_valid() ? t.strftime("%H:%M") : std::string("--:--");
+      - script.execute: pick_page
+  - interval: 60s
+    then:
+      - lambda: |-
+          auto t = id(ha_time).now();
+          if (!t.is_valid()) return;
+          bool n = t.hour >= 23 || t.hour < 6;
+          if (n == id(night)) return;
+          id(night) = n;
+          id(amoled).set_brightness(n ? 0x30 : 0xD0);
 
-sensor:
-  - platform: ble_rssi
-    id: mikkel_phone_rssi
-    name: Mikkel phone RSSI
-    ibeacon_uuid: D6462F88-9442-42DB-9E31-BDFF598EDC25
-    ibeacon_major: 100
-    ibeacon_minor: 40004
-    on_value:
-      - lvgl.label.update:
-          id: rssi_label
-          text:
-            format: "phone: %.0f dBm"
-            args: [x]
+lvgl:
+  displays: [amoled]
+  touchscreens: [touch]
+  buffer_size: 100%
+  bg_color: 0x000000
+  default_font: f_text
+  style_definitions:
+    - id: bare
+      bg_opa: TRANSP
+      border_width: 0
+      outline_width: 0
+      shadow_width: 0
+      pad_all: 0
+    - id: ghost_button
+      bg_opa: TRANSP
+      border_width: 0
+      shadow_width: 0
+      radius: 24
+      width: 56
+      height: 56
+    - id: bubble
+      bg_color: 0x161618
+      bg_opa: COVER
+      border_width: 0
+      shadow_width: 0
+      radius: 26
+      width: 52
+      height: 52
+      pad_all: 0
+  pages:
+    - id: blank_page
+      bg_color: 0x000000
+      widgets: []
+    - id: main_page
+      bg_color: 0x000000
+      widgets:
+        - arc:
+            id: ring
+            align: CENTER
+            width: 456
+            height: 456
+            rotation: 270
+            start_angle: 0
+            end_angle: 360
+            min_value: 0
+            max_value: 100
+            value: 0
+            clickable: false
+            arc_color: 0x1A1A1D
+            arc_width: 4
+            arc_rounded: true
+            indicator:
+              arc_color: 0x8B8B94
+              arc_width: 4
+              arc_rounded: true
+            knob:
+              opa: TRANSP
+              pad_all: 0
+        - label:
+            id: greet_label
+            align: TOP_MID
+            y: 56
+            text_font: f_greet
+            text_color: 0xFBBF24
+            text_letter_space: 1
+            text: ""
+        - label:
+            id: clock_label
+            align: TOP_MID
+            y: 74
+            text_font: f_clock
+            text_color: 0xFFFFFF
+            text: "--:--"
+        - obj:
+            styles: bare
+            align: TOP_MID
+            y: 202
+            width: 360
+            height: 30
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: CENTER
+              flex_align_cross: CENTER
+              pad_column: 8
+            widgets:
+              - label:
+                  id: weather_icon
+                  text_font: f_icon_s
+                  text_color: 0xA1A1AA
+                  text: ""
+              - label:
+                  id: weather_text
+                  text_font: f_text
+                  text_color: 0xA1A1AA
+                  long_mode: DOT
+                  max_width: 320
+                  text: ""
+        - obj:
+            styles: bare
+            align: TOP_MID
+            y: 250
+            width: 300
+            height: 84
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: CENTER
+              flex_align_cross: START
+              pad_column: 22
+            widgets:
+              - obj:
+                  id: chip1
+                  styles: bare
+                  width: 78
+                  height: 84
+                  hidden: true
+                  scrollable: false
+                  layout:
+                    type: FLEX
+                    flex_flow: COLUMN
+                    flex_align_main: START
+                    flex_align_cross: CENTER
+                    pad_row: 7
+                  widgets:
+                    - button:
+                        id: chip1_btn
+                        styles: bubble
+                        on_click:
+                          - script.execute: {id: show_detail, n: 0}
+                        widgets:
+                          - label:
+                              id: chip1_icon
+                              align: CENTER
+                              text_font: f_icon
+                              text_color: 0xE4E4E7
+                              text: ""
+                    - label:
+                        id: chip1_label
+                        text_font: f_label
+                        text_color: 0xA1A1AA
+                        text: ""
+              - obj:
+                  id: chip2
+                  styles: bare
+                  width: 78
+                  height: 84
+                  hidden: true
+                  scrollable: false
+                  layout:
+                    type: FLEX
+                    flex_flow: COLUMN
+                    flex_align_main: START
+                    flex_align_cross: CENTER
+                    pad_row: 7
+                  widgets:
+                    - button:
+                        id: chip2_btn
+                        styles: bubble
+                        on_click:
+                          - script.execute: {id: show_detail, n: 1}
+                        widgets:
+                          - label:
+                              id: chip2_icon
+                              align: CENTER
+                              text_font: f_icon
+                              text_color: 0xE4E4E7
+                              text: ""
+                    - label:
+                        id: chip2_label
+                        text_font: f_label
+                        text_color: 0xA1A1AA
+                        text: ""
+              - obj:
+                  id: chip3
+                  styles: bare
+                  width: 78
+                  height: 84
+                  hidden: true
+                  scrollable: false
+                  layout:
+                    type: FLEX
+                    flex_flow: COLUMN
+                    flex_align_main: START
+                    flex_align_cross: CENTER
+                    pad_row: 7
+                  widgets:
+                    - button:
+                        id: chip3_btn
+                        styles: bubble
+                        on_click:
+                          - script.execute: {id: show_detail, n: 2}
+                        widgets:
+                          - label:
+                              id: chip3_icon
+                              align: CENTER
+                              text_font: f_icon
+                              text_color: 0xE4E4E7
+                              text: ""
+                    - label:
+                        id: chip3_label
+                        text_font: f_label
+                        text_color: 0xA1A1AA
+                        text: ""
+        - label:
+            id: title_label
+            align: TOP_MID
+            y: 336
+            width: 260
+            long_mode: SCROLL_CIRCULAR
+            text_align: CENTER
+            text_font: f_label
+            text_color: 0xD4D4D8
+            text: ""
+        - obj:
+            styles: bare
+            align: TOP_MID
+            y: 358
+            width: 260
+            height: 96
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: CENTER
+              flex_align_cross: CENTER
+              pad_column: 12
+            widgets:
+              - button:
+                  styles: ghost_button
+                  pressed:
+                    bg_color: 0x1F1F23
+                    bg_opa: COVER
+                  on_short_click:
+                    - script.execute:
+                        id: step_volume
+                        delta: !lambda "return -${vol_step}f;"
+                  on_long_press:
+                    - if:
+                        condition:
+                          lambda: return id(speaker_duration).state > 0;
+                        then:
+                          - homeassistant.action:
+                              action: media_player.media_previous_track
+                              data:
+                                entity_id: ${speaker}
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text_font: f_icon_s
+                        text_color: 0xA1A1AA
+                        text: "\U000F0374"
+              - button:
+                  id: play_btn
+                  bg_color: 0x38BDF8
+                  bg_opa: COVER
+                  border_width: 0
+                  shadow_width: 0
+                  pad_all: 0
+                  radius: 48
+                  clip_corner: true
+                  width: 96
+                  height: 96
+                  on_click:
+                    - homeassistant.action:
+                        action: media_player.media_play_pause
+                        data:
+                          entity_id: ${speaker}
+                  widgets:
+                    - image:
+                        id: cover
+                        align: CENTER
+                        src: dr_p3
+                        hidden: true
+                    - obj:
+                        id: cover_dim
+                        styles: bare
+                        align: CENTER
+                        width: 96
+                        height: 96
+                        bg_color: 0x000000
+                        bg_opa: 55%
+                        clickable: false
+                        hidden: true
+                    - label:
+                        id: play_icon
+                        align: CENTER
+                        text_font: f_icon
+                        text_color: 0x000000
+                        text: "\U000F040A"
+              - button:
+                  styles: ghost_button
+                  pressed:
+                    bg_color: 0x1F1F23
+                    bg_opa: COVER
+                  on_short_click:
+                    - script.execute:
+                        id: step_volume
+                        delta: !lambda "return ${vol_step}f;"
+                  on_long_press:
+                    - if:
+                        condition:
+                          lambda: return id(speaker_duration).state > 0;
+                        then:
+                          - homeassistant.action:
+                              action: media_player.media_next_track
+                              data:
+                                entity_id: ${speaker}
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text_font: f_icon_s
+                        text_color: 0xA1A1AA
+                        text: "\U000F0415"

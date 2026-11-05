@@ -281,19 +281,16 @@ script:
   - id: load_cover
     then:
       - lambda: |-
-          static const std::pair<const char *, image::Image *> dr[] = {
-            {"/media/p1.", id(dr_p1)}, {"/media/p2.", id(dr_p2)}, {"/media/p3.", id(dr_p3)},
-            {"/media/p4.", id(dr_p4)}, {"/media/p5.", id(dr_p5)}, {"/media/p6beat.", id(dr_p6beat)},
-            {"/media/p8jazz.", id(dr_p8jazz)}};
+          static const std::map<std::string, image::Image *> dr = {
+            {"DR P1", id(dr_p1)}, {"DR P2", id(dr_p2)}, {"DR P3", id(dr_p3)},
+            {"DR P4 København", id(dr_p4)}, {"DR P5 København", id(dr_p5)},
+            {"DR P6 Beat", id(dr_p6beat)}, {"DR P8 Jazz", id(dr_p8jazz)}};
           const std::string &pic = id(media_picture).state;
+          auto logo = dr.find(id(media_album).state);
           id(has_cover) = false;
-          if (pic.find("dr.dk/lyd/") != std::string::npos) {
-            for (auto &d : dr) {
-              if (pic.find(d.first) == std::string::npos) continue;
-              lv_image_set_src(id(cover), d.second);
-              id(has_cover) = true;
-              break;
-            }
+          if (logo != dr.end()) {
+            lv_image_set_src(id(cover), logo->second);
+            id(has_cover) = true;
           } else if (!pic.empty()) {
             // Spotify's 640 px cover often exceeds the 64 KB JPEG buffer; its 300 px variant does not.
             std::string url = pic;
@@ -411,7 +408,9 @@ text_sensor:
     id: media_album
     entity_id: ${speaker}
     attribute: media_album_name
-    on_value: [script.execute: paint_title]
+    on_value:
+      - script.execute: paint_title
+      - script.execute: load_cover
   - platform: homeassistant
     id: media_picture
     entity_id: ${speaker}

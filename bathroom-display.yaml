@@ -5,6 +5,8 @@ substitutions:
   wake_ms: "30000"
   vol_step: "0.04"
   ha_url: "http://10.21.0.5:8123"
+  # The build passes the short git commit with -s git_rev.
+  git_rev: unknown
 
 # VIEWE SmartRing 1.75" (factory SKU viewe-uedx46460-1.75): ESP32-S3R8, 16 MB flash,
 # 466x466 CO5300 AMOLED on QSPI, CST816S touch. Pins per VIEWESMART/VIEWE-SMARTRING.
@@ -12,6 +14,9 @@ substitutions:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
+  project:
+    name: mikkel.bathroom-display
+    version: ${git_rev}
   includes:
     - bathroom-display/mdi_glyph.h
 

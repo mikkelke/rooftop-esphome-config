@@ -5,6 +5,8 @@
 // UTF-8 glyph of an "mdi:<name>" icon in the f_icon fonts; a question mark circle for one not in the font.
 inline std::string mdi_glyph(const std::string &name) {
   static const std::map<std::string, std::string> glyphs = {
+            {"mdi:alarm", "\U000F0020"},
+            {"mdi:arm-flex", "\U000F0FD7"},
             {"mdi:auto-fix", "\U000F0068"},
             {"mdi:basket-check", "\U000F18E5"},
             {"mdi:battery-alert-variant-outline", "\U000F10CD"},
@@ -33,6 +35,7 @@ inline std::string mdi_glyph(const std::string &name) {
             {"mdi:plus", "\U000F0415"},
             {"mdi:radio", "\U000F0439"},
             {"mdi:robot-vacuum", "\U000F070D"},
+            {"mdi:scale-bathroom", "\U000F0473"},
             {"mdi:skip-next", "\U000F04AD"},
             {"mdi:skip-previous", "\U000F04AE"},
             {"mdi:spotify", "\U000F04C7"},
@@ -45,6 +48,7 @@ inline std::string mdi_glyph(const std::string &name) {
             {"mdi:vacuum", "\U000F19A1"},
             {"mdi:washing-machine", "\U000F072A"},
             {"mdi:water", "\U000F058C"},
+            {"mdi:water-percent", "\U000F058E"},
             {"mdi:watering-can-outline", "\U000F1482"},
             {"mdi:weather-cloudy", "\U000F0590"},
             {"mdi:weather-fog", "\U000F0591"},

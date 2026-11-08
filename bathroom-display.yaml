@@ -4,6 +4,8 @@ substitutions:
   speaker: media_player.bathroom
   wake_ms: "30000"
   vol_step: "0.04"
+  # AMOLED brightness of the night face, 0x00 to 0xFF.
+  night_brightness: "0x10"
   ha_url: "http://10.21.0.5:8123"
   # The build passes the short git commit with -s git_rev.
   git_rev: unknown
@@ -11,7 +13,10 @@ substitutions:
 # VIEWE SmartRing 1.75" (factory SKU viewe-uedx46460-1.75): ESP32-S3R8, 16 MB flash,
 # 466x466 CO5300 AMOLED on QSPI, CST816S touch. Pins per VIEWESMART/VIEWE-SMARTRING.
 # What to show comes from sensor.bathroom_display (AppDaemon BathroomDisplay): off | someone | mikkel.
+# Its night attribute is "on" in sleep mode, and the face is then only the clock and the alarm line (line1).
 # The play button fires esphome.bathroom_display_play; BathroomDisplay pauses, resumes or starts the radio.
+# A tap on an alarm line, in a chip or on the night face, fires esphome.bathroom_display_alarm; BathroomDisplay
+# toggles the wake-up alarm.
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
@@ -118,6 +123,10 @@ globals:
   - id: night
     type: bool
     initial_value: "false"
+  # The night face is up (sleep mode); `night` above is the dimming from 23 to 06.
+  - id: face_night
+    type: bool
+    initial_value: "false"
   - id: has_cover
     type: bool
     initial_value: "false"
@@ -167,20 +176,28 @@ font:
     id: f_text
     size: 20
     glyphsets: [GF_Latin_Core]
+    # GF_Latin_Core has no plus-minus sign, which the weighing lines use.
+    glyphs: ["±"]
   - file: "gfonts://Inter@500"
     id: f_label
     size: 14
     glyphsets: [GF_Latin_Core]
+    glyphs: ["±"]
   - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
     id: f_icon
     size: 26
-    glyphs: ["\U000F0068", "\U000F18E5", "\U000F10CD", "\U000F12A4", "\U000F19E6", "\U000F1835", "\U000F0A30", "\U000F0D5D", "\U000F05E1", "\U000F109F", "\U000F0AAC", "\U000F081C", "\U000F024A", "\U000F0625", "\U000F02DA", "\U000F02FD", "\U000F0319", "\U000F032A", "\U000F0FC6", "\U000F0374", "\U000F0A07", "\U000F075A", "\U000F0387", "\U000F03E4", "\U000F040A", "\U000F0415", "\U000F0439", "\U000F070D", "\U000F04AD", "\U000F04AE", "\U000F04C7", "\U000F0665", "\U000F0E66", "\U000F0502", "\U000F11FC", "\U000F052C", "\U000F0917", "\U000F19A1", "\U000F072A", "\U000F058C", "\U000F1482", "\U000F0590", "\U000F0591", "\U000F0592", "\U000F0593", "\U000F067E", "\U000F0594", "\U000F0595", "\U000F0596", "\U000F0597", "\U000F0598", "\U000F067F", "\U000F0599", "\U000F059D", "\U000F059E"]
+    glyphs: ["\U000F0020", "\U000F0FD7", "\U000F0068", "\U000F18E5", "\U000F10CD", "\U000F12A4", "\U000F19E6", "\U000F1835", "\U000F0A30", "\U000F0D5D", "\U000F05E1", "\U000F109F", "\U000F0AAC", "\U000F081C", "\U000F024A", "\U000F0625", "\U000F02DA", "\U000F02FD", "\U000F0319", "\U000F032A", "\U000F0FC6", "\U000F0374", "\U000F0A07", "\U000F075A", "\U000F0387", "\U000F03E4", "\U000F040A", "\U000F0415", "\U000F0439", "\U000F070D", "\U000F0473", "\U000F04AD", "\U000F04AE", "\U000F04C7", "\U000F0665", "\U000F0E66", "\U000F0502", "\U000F11FC", "\U000F052C", "\U000F0917", "\U000F19A1", "\U000F072A", "\U000F058C", "\U000F058E", "\U000F1482", "\U000F0590", "\U000F0591", "\U000F0592", "\U000F0593", "\U000F067E", "\U000F0594", "\U000F0595", "\U000F0596", "\U000F0597", "\U000F0598", "\U000F067F", "\U000F0599", "\U000F059D", "\U000F059E"]
   - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
     id: f_icon_s
     size: 22
-    glyphs: ["\U000F0068", "\U000F18E5", "\U000F10CD", "\U000F12A4", "\U000F19E6", "\U000F1835", "\U000F0A30", "\U000F0D5D", "\U000F05E1", "\U000F109F", "\U000F0AAC", "\U000F081C", "\U000F024A", "\U000F0625", "\U000F02DA", "\U000F02FD", "\U000F0319", "\U000F032A", "\U000F0FC6", "\U000F0374", "\U000F0A07", "\U000F075A", "\U000F0387", "\U000F03E4", "\U000F040A", "\U000F0415", "\U000F0439", "\U000F070D", "\U000F04AD", "\U000F04AE", "\U000F04C7", "\U000F0665", "\U000F0E66", "\U000F0502", "\U000F11FC", "\U000F052C", "\U000F0917", "\U000F19A1", "\U000F072A", "\U000F058C", "\U000F1482", "\U000F0590", "\U000F0591", "\U000F0592", "\U000F0593", "\U000F067E", "\U000F0594", "\U000F0595", "\U000F0596", "\U000F0597", "\U000F0598", "\U000F067F", "\U000F0599", "\U000F059D", "\U000F059E"]
+    glyphs: ["\U000F0020", "\U000F0FD7", "\U000F0068", "\U000F18E5", "\U000F10CD", "\U000F12A4", "\U000F19E6", "\U000F1835", "\U000F0A30", "\U000F0D5D", "\U000F05E1", "\U000F109F", "\U000F0AAC", "\U000F081C", "\U000F024A", "\U000F0625", "\U000F02DA", "\U000F02FD", "\U000F0319", "\U000F032A", "\U000F0FC6", "\U000F0374", "\U000F0A07", "\U000F075A", "\U000F0387", "\U000F03E4", "\U000F040A", "\U000F0415", "\U000F0439", "\U000F070D", "\U000F0473", "\U000F04AD", "\U000F04AE", "\U000F04C7", "\U000F0665", "\U000F0E66", "\U000F0502", "\U000F11FC", "\U000F052C", "\U000F0917", "\U000F19A1", "\U000F072A", "\U000F058C", "\U000F058E", "\U000F1482", "\U000F0590", "\U000F0591", "\U000F0592", "\U000F0593", "\U000F067E", "\U000F0594", "\U000F0595", "\U000F0596", "\U000F0597", "\U000F0598", "\U000F067F", "\U000F0599", "\U000F059D", "\U000F059E"]
 
 script:
+  # The night face's brightness while it is up, else dim from 23 to 06.
+  - id: apply_brightness
+    then:
+      - lambda: |-
+          id(amoled).set_brightness(id(face_night) ? ${night_brightness} : (id(night) ? 0x30 : 0xD0));
   - id: pick_page
     then:
       - if:
@@ -231,12 +248,45 @@ script:
           lv_label_set_text(id(weather_text), lines[n]->c_str());
       - delay: 6s
       - script.execute: paint_weather
+  # The alarm line toggles the alarm; any other shows its full text in place of the weather.
+  - id: tap_chip
+    parameters:
+      n: int
+    then:
+      - if:
+          condition:
+            lambda: |-
+              const std::string *glyphs[3] = {&id(icon1).state, &id(icon2).state, &id(icon3).state};
+              return *glyphs[n] == "mdi:alarm";
+          then:
+            - homeassistant.event:
+                event: esphome.bathroom_display_alarm
+          else:
+            - script.execute:
+                id: show_detail
+                n: !lambda "return n;"
   - id: paint
     then:
       - lambda: |-
-          bool me = id(view).state == "mikkel";
+          bool night_on = id(face_night);
+          bool me = !night_on && id(view).state == "mikkel";
           lv_obj_set_style_arc_color(id(ring), lv_color_hex(me ? 0xFBBF24 : 0x38BDF8), LV_PART_INDICATOR);
           lv_label_set_text(id(greet_label), me ? id(greeting).state.c_str() : "");
+          // The night face is the clock and the alarm line: everything else is hidden.
+          lv_obj_t *day[] = {id(ring), id(weather_row), id(chip_row), id(title_label), id(artist_label), id(control_row)};
+          for (lv_obj_t *o : day) {
+            if (night_on) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+          }
+          lv_obj_align(id(clock_label), LV_ALIGN_TOP_MID, 0, night_on ? 139 : 70);
+          lv_obj_set_style_text_color(id(clock_label), lv_color_hex(night_on ? 0xFBBF24 : 0xFFFFFF), LV_PART_MAIN);
+          if (night_on && !id(line1).state.empty()) {
+            lv_label_set_text(id(night_icon), mdi_glyph(id(icon1).state).c_str());
+            lv_label_set_text(id(night_label), id(line1).state.c_str());
+            lv_obj_clear_flag(id(night_row), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(night_row), LV_OBJ_FLAG_HIDDEN);
+          }
           lv_obj_t *chips[3] = {id(chip1), id(chip2), id(chip3)};
           lv_obj_t *bubbles[3] = {id(chip1_btn), id(chip2_btn), id(chip3_btn)};
           lv_obj_t *icons[3] = {id(chip1_icon), id(chip2_icon), id(chip3_icon)};
@@ -412,6 +462,17 @@ text_sensor:
     attribute: due3
     on_value: [script.execute: paint]
   - platform: homeassistant
+    id: night_face
+    entity_id: sensor.bathroom_display
+    attribute: night
+    on_value:
+      - lambda: |-
+          bool on = x == "on";
+          if (on == id(face_night)) return;
+          id(face_night) = on;
+          id(apply_brightness).execute();
+      - script.execute: paint
+  - platform: homeassistant
     id: weather_state
     entity_id: weather.forecast_home
     on_value: [script.execute: paint_weather]
@@ -493,7 +554,7 @@ interval:
           bool n = t.hour >= 23 || t.hour < 6;
           if (n == id(night)) return;
           id(night) = n;
-          id(amoled).set_brightness(n ? 0x30 : 0xD0);
+          id(apply_brightness).execute();
 
 lvgl:
   displays: [amoled]
@@ -568,7 +629,43 @@ lvgl:
             text_font: f_clock
             text_color: 0xFFFFFF
             text: "--:--"
+        - button:
+            id: night_row
+            align: TOP_MID
+            y: 271
+            width: 240
+            height: 56
+            hidden: true
+            bg_color: 0x161618
+            bg_opa: COVER
+            border_width: 0
+            shadow_width: 0
+            pad_all: 0
+            radius: 28
+            pressed:
+              bg_color: 0x1F1F23
+              bg_opa: COVER
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: CENTER
+              flex_align_cross: CENTER
+              pad_column: 12
+            on_click:
+              - script.execute: {id: tap_chip, n: 0}
+            widgets:
+              - label:
+                  id: night_icon
+                  text_font: f_icon
+                  text_color: 0xFBBF24
+                  text: ""
+              - label:
+                  id: night_label
+                  text_font: f_text
+                  text_color: 0xE4E4E7
+                  text: ""
         - obj:
+            id: weather_row
             styles: bare
             align: TOP_MID
             y: 188
@@ -594,6 +691,7 @@ lvgl:
                   max_width: 320
                   text: ""
         - obj:
+            id: chip_row
             styles: bare
             align: TOP_MID
             y: 224
@@ -624,7 +722,7 @@ lvgl:
                         id: chip1_btn
                         styles: bubble
                         on_click:
-                          - script.execute: {id: show_detail, n: 0}
+                          - script.execute: {id: tap_chip, n: 0}
                         widgets:
                           - label:
                               id: chip1_icon
@@ -655,7 +753,7 @@ lvgl:
                         id: chip2_btn
                         styles: bubble
                         on_click:
-                          - script.execute: {id: show_detail, n: 1}
+                          - script.execute: {id: tap_chip, n: 1}
                         widgets:
                           - label:
                               id: chip2_icon
@@ -686,7 +784,7 @@ lvgl:
                         id: chip3_btn
                         styles: bubble
                         on_click:
-                          - script.execute: {id: show_detail, n: 2}
+                          - script.execute: {id: tap_chip, n: 2}
                         widgets:
                           - label:
                               id: chip3_icon
@@ -720,6 +818,7 @@ lvgl:
             text_color: 0xA1A1AA
             text: ""
         - obj:
+            id: control_row
             styles: bare
             align: TOP_MID
             y: 358

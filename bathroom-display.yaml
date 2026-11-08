@@ -11,6 +11,7 @@ substitutions:
 # VIEWE SmartRing 1.75" (factory SKU viewe-uedx46460-1.75): ESP32-S3R8, 16 MB flash,
 # 466x466 CO5300 AMOLED on QSPI, CST816S touch. Pins per VIEWESMART/VIEWE-SMARTRING.
 # What to show comes from sensor.bathroom_display (AppDaemon BathroomDisplay): off | someone | mikkel.
+# The play button fires esphome.bathroom_display_play; BathroomDisplay pauses, resumes or starts the radio.
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
@@ -156,7 +157,7 @@ image:
 font:
   - file: "gfonts://Inter@300"
     id: f_clock
-    size: 108
+    size: 96
     glyphs: "0123456789:-"
   - file: "gfonts://Inter@500"
     id: f_greet
@@ -263,7 +264,19 @@ script:
       - lambda: |-
           bool me = id(view).state == "mikkel";
           bool playing = id(speaker_state).state == "playing";
+          bool live = playing || id(speaker_state).state == "paused";
           lv_label_set_text(id(play_icon), mdi_glyph(playing ? "mdi:pause" : "mdi:play").c_str());
+          if (!live) {
+            // Nothing to resume: a tap starts the radio, so the button shows its logo.
+            lv_obj_add_flag(id(cover), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(radio_cover), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(cover_dim), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(play_icon), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_opa(id(play_btn), LV_OPA_TRANSP, LV_PART_MAIN);
+            lv_obj_set_style_text_color(id(play_icon), lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            return;
+          }
+          lv_obj_add_flag(id(radio_cover), LV_OBJ_FLAG_HIDDEN);
           if (id(has_cover)) {
             lv_obj_clear_flag(id(cover), LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_style_bg_opa(id(play_btn), LV_OPA_TRANSP, LV_PART_MAIN);
@@ -316,12 +329,19 @@ script:
             for (auto &c : l) c = tolower(c);
             return !l.empty() && l != "no desc" && l != "unknown" && l.rfind("playlist", 0) != 0;
           };
+          const std::string &state = id(speaker_state).state;
           const std::string &title = id(media_title).state, &artist = id(media_artist).state, &album = id(media_album).state;
-          std::string text;
-          if (!usable(title)) text = usable(album) ? album : "";
-          else if (usable(artist)) text = artist + " – " + title;
-          else text = title;
-          lv_label_set_text(id(title_label), text.c_str());
+          bool live = state == "playing" || state == "paused";
+          std::string main, sub;
+          if (live && usable(title)) {
+            main = title;
+            sub = usable(artist) ? artist : usable(album) ? album : "";
+          } else if (live && usable(album)) {
+            main = album;
+          }
+          if (sub == main) sub = "";
+          lv_label_set_text(id(title_label), main.c_str());
+          lv_label_set_text(id(artist_label), sub.c_str());
   - id: step_volume
     parameters:
       delta: float
@@ -398,7 +418,9 @@ text_sensor:
   - platform: homeassistant
     id: speaker_state
     entity_id: ${speaker}
-    on_value: [script.execute: paint_media]
+    on_value:
+      - script.execute: paint_media
+      - script.execute: paint_title
   - platform: homeassistant
     id: media_title
     entity_id: ${speaker}
@@ -534,7 +556,7 @@ lvgl:
         - label:
             id: greet_label
             align: TOP_MID
-            y: 56
+            y: 52
             text_font: f_greet
             text_color: 0xFBBF24
             text_letter_space: 1
@@ -542,14 +564,14 @@ lvgl:
         - label:
             id: clock_label
             align: TOP_MID
-            y: 74
+            y: 70
             text_font: f_clock
             text_color: 0xFFFFFF
             text: "--:--"
         - obj:
             styles: bare
             align: TOP_MID
-            y: 202
+            y: 188
             width: 360
             height: 30
             layout:
@@ -574,7 +596,7 @@ lvgl:
         - obj:
             styles: bare
             align: TOP_MID
-            y: 250
+            y: 224
             width: 300
             height: 84
             layout:
@@ -680,12 +702,22 @@ lvgl:
         - label:
             id: title_label
             align: TOP_MID
-            y: 336
-            width: 260
+            y: 310
+            width: 300
             long_mode: SCROLL_CIRCULAR
             text_align: CENTER
+            text_font: f_text
+            text_color: 0xF4F4F5
+            text: ""
+        - label:
+            id: artist_label
+            align: TOP_MID
+            y: 336
+            width: 280
+            long_mode: DOT
+            text_align: CENTER
             text_font: f_label
-            text_color: 0xD4D4D8
+            text_color: 0xA1A1AA
             text: ""
         - obj:
             styles: bare
@@ -736,13 +768,16 @@ lvgl:
                   width: 96
                   height: 96
                   on_click:
-                    - homeassistant.action:
-                        action: media_player.media_play_pause
-                        data:
-                          entity_id: ${speaker}
+                    - homeassistant.event:
+                        event: esphome.bathroom_display_play
                   widgets:
                     - image:
                         id: cover
+                        align: CENTER
+                        src: dr_p3
+                        hidden: true
+                    - image:
+                        id: radio_cover
                         align: CENTER
                         src: dr_p3
                         hidden: true

@@ -299,7 +299,7 @@ script:
             lv_obj_clear_flag(chips[i], LV_OBJ_FLAG_HIDDEN);
             const std::string &due = *dues[i];
             bool late = due == "overdue";
-            std::string when = late ? "nu" : due == "today" ? "i dag" : due == "tomorrow" ? "i morgen" : due;
+            const std::string &when = late ? std::string("now") : due;
             lv_label_set_text(icons[i], mdi_glyph(*glyphs[i]).c_str());
             lv_label_set_text(labels[i], when.c_str());
             auto fg = late ? lv_color_hex(0xFB7185) : lv_color_hex(0xE4E4E7);

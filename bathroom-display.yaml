@@ -78,6 +78,52 @@ microphone:
     bits_per_sample: 16bit
     correct_dc_offset: true
 
+# Wake word runs on the device; after it, Assist (HA's preferred pipeline) gets the audio
+# and the spoken answer plays on the bathroom Sonos. The ring turns green while listening.
+micro_wake_word:
+  id: mww
+  microphone: mic
+  models:
+    - model: hey_jarvis
+  on_wake_word_detected:
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+
+voice_assistant:
+  id: va
+  microphone: mic
+  on_client_connected:
+    - micro_wake_word.start:
+  on_client_disconnected:
+    - voice_assistant.stop:
+    - micro_wake_word.stop:
+  on_listening:
+    - lambda: |-
+        id(awake_until) = millis() + ${wake_ms};
+        lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x22C55E), LV_PART_MAIN);
+    - script.execute: pick_page
+  on_stt_vad_end:
+    - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
+  on_tts_end:
+    - homeassistant.action:
+        action: media_player.play_media
+        data:
+          entity_id: ${speaker}
+          media_content_type: music
+          announce: "true"
+        data_template:
+          media_content_id: "{{ url }}"
+        variables:
+          url: !lambda return x;
+  on_end:
+    - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
+    - wait_until:
+        not:
+          voice_assistant.is_running:
+    - micro_wake_word.start:
+  on_error:
+    - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
+
 spi:
   id: display_qspi
   type: quad

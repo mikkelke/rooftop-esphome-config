@@ -38,6 +38,9 @@ psram:
 
 logger:
 
+debug:
+  update_interval: 60s
+
 api:
   encryption:
     key: !secret bathroom_display_api_key
@@ -609,6 +612,15 @@ sensor:
     rms:
       name: Sound level
       id: sound_rms
+  - platform: debug
+    free:
+      name: Heap free
+    block:
+      name: Heap largest block
+    loop_time:
+      name: Loop time
+    psram:
+      name: PSRAM free
 
 interval:
   - interval: 1s

@@ -1,0 +1,14 @@
+substitutions:
+  name: ble-proxy-33d5c4
+  friendly_name: BLE proxy 33d5c4
+
+packages:
+  nanoc6: !include common/nanoc6-ble-proxy.yaml
+
+api:
+  encryption:
+    key: !secret ble_proxy_33d5c4_api_key
+
+ota:
+  - platform: esphome
+    password: !secret ble_proxy_33d5c4_ota_password

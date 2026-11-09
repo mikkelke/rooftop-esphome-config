@@ -76,6 +76,7 @@ microphone:
     pdm: true
     sample_rate: 16000
     bits_per_sample: 16bit
+    correct_dc_offset: true
 
 spi:
   id: display_qspi

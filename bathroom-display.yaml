@@ -62,6 +62,21 @@ esp32_ble_tracker:
 bluetooth_proxy:
   active: false
 
+# Onboard PDM mic: clock GPIO48, data GPIO47. ESPHome takes the PDM clock on the lrclk pin.
+i2s_audio:
+  - id: i2s_mic
+    i2s_lrclk_pin: GPIO48
+
+microphone:
+  - platform: i2s_audio
+    id: mic
+    i2s_audio_id: i2s_mic
+    i2s_din_pin: GPIO47
+    adc_type: external
+    pdm: true
+    sample_rate: 16000
+    bits_per_sample: 16bit
+
 spi:
   id: display_qspi
   type: quad
@@ -536,6 +551,17 @@ sensor:
     filters:
       - throttle_average: 2s
       - timeout: 15s
+  # dBFS, not calibrated dB SPL: compare against the room's own baseline.
+  - platform: sound_level
+    microphone: mic
+    passive: false
+    measurement_duration: 10s
+    peak:
+      name: Sound peak
+      id: sound_peak
+    rms:
+      name: Sound level
+      id: sound_rms
 
 interval:
   - interval: 1s

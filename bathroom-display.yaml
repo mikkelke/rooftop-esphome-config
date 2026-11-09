@@ -87,7 +87,7 @@ micro_wake_word:
   id: mww
   microphone: mic
   models:
-    - model: hey_jarvis
+    - model: alexa
   on_wake_word_detected:
     - voice_assistant.start:
         wake_word: !lambda return wake_word;

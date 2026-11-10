@@ -86,7 +86,8 @@ microphone:
     correct_dc_offset: true
 
 # Wake word runs on the device; after it, Assist (HA's preferred pipeline) gets the audio
-# and the spoken answer plays on the bathroom Sonos. The ring turns green while listening.
+# and the spoken answer plays on the bathroom Sonos. The ring is green while listening and
+# blue from the end of speech until the answer has played.
 # The answer's play_media call returns when the Sonos has said it; then the display listens
 # for follow_up_ms (follow_up_question_ms after a question) without the wake word, in the same conversation, at most 10 times per wake.
 micro_wake_word:
@@ -115,7 +116,7 @@ voice_assistant:
   on_stt_vad_start:
     - lambda: id(heard_speech) = true;
   on_stt_vad_end:
-    - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
+    - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x3B82F6), LV_PART_MAIN);
   on_tts_start:
     - lambda: |-
         size_t end = x.find_last_not_of(" \t\r\n");
@@ -138,10 +139,12 @@ voice_assistant:
           - binary_sensor.template.publish:
               id: answer_playing
               state: false
+          - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
         on_success:
           - binary_sensor.template.publish:
               id: answer_playing
               state: false
+          - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
           - if:
               condition:
                 lambda: return id(follow_ups) < 10;
@@ -149,7 +152,11 @@ voice_assistant:
                 - lambda: id(follow_ups) += 1;
                 - script.execute: follow_up
   on_end:
-    - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
+    - if:
+        condition:
+          lambda: return !id(answer_playing).state;
+        then:
+          - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
     - wait_until:
         not:
           voice_assistant.is_running:

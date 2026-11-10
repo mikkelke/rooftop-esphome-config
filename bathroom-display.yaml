@@ -4,7 +4,7 @@ substitutions:
   speaker: media_player.bathroom
   wake_ms: "30000"
   # How long the display listens for a follow-up after the speaker has said the answer.
-  follow_up_ms: "6000"
+  follow_up_ms: "10000"
   vol_step: "0.04"
   # AMOLED brightness of the night face, 0x00 to 0xFF.
   night_brightness: "0x10"
@@ -86,7 +86,7 @@ microphone:
 # Wake word runs on the device; after it, Assist (HA's preferred pipeline) gets the audio
 # and the spoken answer plays on the bathroom Sonos. The ring turns green while listening.
 # The answer's play_media call returns when the Sonos has said it; then the display listens
-# for follow_up_ms without the wake word, in the same conversation, at most 3 times per wake.
+# for follow_up_ms without the wake word, in the same conversation, at most 10 times per wake.
 micro_wake_word:
   id: mww
   microphone: mic
@@ -138,7 +138,7 @@ voice_assistant:
               state: false
           - if:
               condition:
-                lambda: return id(follow_ups) < 3;
+                lambda: return id(follow_ups) < 10;
               then:
                 - lambda: id(follow_ups) += 1;
                 - script.execute: follow_up

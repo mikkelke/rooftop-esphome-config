@@ -3,6 +3,8 @@ substitutions:
   friendly_name: Bathroom display
   speaker: media_player.bathroom
   wake_ms: "30000"
+  # How long the display listens for a follow-up after the speaker has said the answer.
+  follow_up_ms: "6000"
   vol_step: "0.04"
   # AMOLED brightness of the night face, 0x00 to 0xFF.
   night_brightness: "0x10"
@@ -83,12 +85,15 @@ microphone:
 
 # Wake word runs on the device; after it, Assist (HA's preferred pipeline) gets the audio
 # and the spoken answer plays on the bathroom Sonos. The ring turns green while listening.
+# The answer's play_media call returns when the Sonos has said it; then the display listens
+# for follow_up_ms without the wake word, in the same conversation, at most 3 times per wake.
 micro_wake_word:
   id: mww
   microphone: mic
   models:
     - model: alexa
   on_wake_word_detected:
+    - lambda: id(follow_ups) = 0;
     - voice_assistant.start:
         wake_word: !lambda return wake_word;
 
@@ -105,6 +110,8 @@ voice_assistant:
         id(awake_until) = millis() + ${wake_ms};
         lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x22C55E), LV_PART_MAIN);
     - script.execute: pick_page
+  on_stt_vad_start:
+    - lambda: id(heard_speech) = true;
   on_stt_vad_end:
     - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
   on_tts_end:
@@ -118,6 +125,13 @@ voice_assistant:
           media_content_id: "{{ url }}"
         variables:
           url: !lambda return x;
+        on_success:
+          - if:
+              condition:
+                lambda: return id(follow_ups) < 3;
+              then:
+                - lambda: id(follow_ups) += 1;
+                - script.execute: follow_up
   on_end:
     - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
     - wait_until:
@@ -179,6 +193,12 @@ touchscreen:
       - script.execute: pick_page
 
 globals:
+  - id: follow_ups
+    type: int
+    initial_value: "0"
+  - id: heard_speech
+    type: bool
+    initial_value: "false"
   - id: awake_until
     type: uint32_t
     initial_value: "0"
@@ -258,6 +278,25 @@ font:
     glyphs: ["\U000F0020", "\U000F0FD7", "\U000F0068", "\U000F18E5", "\U000F10CD", "\U000F12A4", "\U000F19E6", "\U000F1835", "\U000F0A30", "\U000F0D5D", "\U000F05E1", "\U000F109F", "\U000F0AAC", "\U000F081C", "\U000F024A", "\U000F0625", "\U000F02DA", "\U000F02FD", "\U000F0319", "\U000F032A", "\U000F0FC6", "\U000F0374", "\U000F0A07", "\U000F075A", "\U000F0387", "\U000F03E4", "\U000F040A", "\U000F0415", "\U000F0439", "\U000F070D", "\U000F0473", "\U000F04AD", "\U000F04AE", "\U000F04C7", "\U000F0665", "\U000F0E66", "\U000F0502", "\U000F11FC", "\U000F052C", "\U000F0917", "\U000F19A1", "\U000F072A", "\U000F058C", "\U000F058E", "\U000F1482", "\U000F0590", "\U000F0591", "\U000F0592", "\U000F0593", "\U000F067E", "\U000F0594", "\U000F0595", "\U000F0596", "\U000F0597", "\U000F0598", "\U000F067F", "\U000F0599", "\U000F059D", "\U000F059E"]
 
 script:
+  - id: follow_up
+    mode: restart
+    then:
+      - wait_until:
+          not:
+            voice_assistant.is_running:
+      - micro_wake_word.stop:
+      - lambda: id(heard_speech) = false;
+      - voice_assistant.start:
+      - delay: ${follow_up_ms}ms
+      - if:
+          condition:
+            lambda: return !id(heard_speech);
+          then:
+            - voice_assistant.stop:
+            - wait_until:
+                not:
+                  voice_assistant.is_running:
+            - micro_wake_word.start:
   # The night face's brightness while it is up, else dim from 23 to 06.
   - id: apply_brightness
     then:

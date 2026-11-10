@@ -115,6 +115,9 @@ voice_assistant:
   on_stt_vad_end:
     - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
   on_tts_end:
+    - binary_sensor.template.publish:
+        id: answer_playing
+        state: true
     - homeassistant.action:
         action: media_player.play_media
         data:
@@ -125,7 +128,14 @@ voice_assistant:
           media_content_id: "{{ url }}"
         variables:
           url: !lambda return x;
+        on_error:
+          - binary_sensor.template.publish:
+              id: answer_playing
+              state: false
         on_success:
+          - binary_sensor.template.publish:
+              id: answer_playing
+              state: false
           - if:
               condition:
                 lambda: return id(follow_ups) < 3;
@@ -191,6 +201,12 @@ touchscreen:
     on_touch:
       - lambda: id(awake_until) = millis() + ${wake_ms};
       - script.execute: pick_page
+
+# On while the spoken answer plays on the speaker; AppDaemon AssistRooms never mutes then.
+binary_sensor:
+  - platform: template
+    id: answer_playing
+    name: Answer playing
 
 globals:
   - id: follow_ups

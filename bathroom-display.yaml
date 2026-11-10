@@ -3,8 +3,10 @@ substitutions:
   friendly_name: Bathroom display
   speaker: media_player.bathroom
   wake_ms: "30000"
-  # How long the display listens for a follow-up after the speaker has said the answer.
-  follow_up_ms: "10000"
+  # How long the display listens for a follow-up after the speaker has said the answer:
+  # longer when the answer ended with a question (the rule HA uses for continue_conversation).
+  follow_up_ms: "6000"
+  follow_up_question_ms: "10000"
   vol_step: "0.04"
   # AMOLED brightness of the night face, 0x00 to 0xFF.
   night_brightness: "0x10"
@@ -86,7 +88,7 @@ microphone:
 # Wake word runs on the device; after it, Assist (HA's preferred pipeline) gets the audio
 # and the spoken answer plays on the bathroom Sonos. The ring turns green while listening.
 # The answer's play_media call returns when the Sonos has said it; then the display listens
-# for follow_up_ms without the wake word, in the same conversation, at most 10 times per wake.
+# for follow_up_ms (follow_up_question_ms after a question) without the wake word, in the same conversation, at most 10 times per wake.
 micro_wake_word:
   id: mww
   microphone: mic
@@ -114,6 +116,10 @@ voice_assistant:
     - lambda: id(heard_speech) = true;
   on_stt_vad_end:
     - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
+  on_tts_start:
+    - lambda: |-
+        size_t end = x.find_last_not_of(" \t\r\n");
+        id(answer_asks) = end != std::string::npos && x[end] == '?';
   on_tts_end:
     - binary_sensor.template.publish:
         id: answer_playing
@@ -215,6 +221,9 @@ globals:
   - id: heard_speech
     type: bool
     initial_value: "false"
+  - id: answer_asks
+    type: bool
+    initial_value: "false"
   - id: awake_until
     type: uint32_t
     initial_value: "0"
@@ -303,7 +312,7 @@ script:
       - micro_wake_word.stop:
       - lambda: id(heard_speech) = false;
       - voice_assistant.start:
-      - delay: ${follow_up_ms}ms
+      - delay: !lambda "return id(answer_asks) ? ${follow_up_question_ms} : ${follow_up_ms};"
       - if:
           condition:
             lambda: return !id(heard_speech);

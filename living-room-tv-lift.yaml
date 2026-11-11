@@ -59,6 +59,9 @@ esp32_ble_tracker:
     interval: 160ms
     window: 80ms
 
+bluetooth_proxy:
+  active: false
+
 ble_client:
   - mac_address: $mount_mac
     id: mount

@@ -23,6 +23,11 @@ api:
 ota:
   - platform: esphome
     password: !secret ble_proxy_landing_ota_password
+# The lamp cuts power whenever the stairwell light times out. A boot leaves the safe-mode counter
+# only after boot_is_good_after, so it must stay well below the shortest light-on time, or ten short
+# lamp sessions in a row put the board into safe mode, where it is no proxy.
+safe_mode:
+  boot_is_good_after: 15s
 
 wifi:
   ssid: !secret wifi_ssid

@@ -1,0 +1,50 @@
+substitutions:
+  name: ble-proxy-landing
+  friendly_name: BLE proxy landing
+
+# M5Stack ATOM (ESP32-PICO-D4) in the landing lamp outside the elevator. The lamp, and with it
+# this board, powers up only when the stairwell lights come on, so it must be scanning within
+# seconds of power-on.
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: m5stack-atom
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: !secret ble_proxy_landing_api_key
+
+ota:
+  - platform: esphome
+    password: !secret ble_proxy_landing_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+bluetooth_proxy:
+  active: true
+
+sensor:
+  - platform: wifi_signal
+    name: WiFi signal
+    update_interval: 60s
+  - platform: uptime
+    name: Uptime
+
+button:
+  - platform: restart
+    name: Restart

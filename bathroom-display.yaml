@@ -30,6 +30,12 @@ esphome:
   includes:
     - bathroom-display/mdi_glyph.h
 
+external_components:
+  - source:
+      type: local
+      path: bathroom-display/components
+    components: [answer_relay]
+
 esp32:
   variant: esp32s3
   flash_size: 16MB
@@ -103,6 +109,8 @@ micro_wake_word:
 voice_assistant:
   id: va
   microphone: mic
+  # The answer URL arrives as soon as HA starts streaming the spoken answer, or at its end.
+  media_player: answer_player
   on_client_connected:
     - micro_wake_word.start:
   on_client_disconnected:
@@ -121,36 +129,6 @@ voice_assistant:
     - lambda: |-
         size_t end = x.find_last_not_of(" \t\r\n");
         id(answer_asks) = end != std::string::npos && x[end] == '?';
-  on_tts_end:
-    - binary_sensor.template.publish:
-        id: answer_playing
-        state: true
-    - homeassistant.action:
-        action: media_player.play_media
-        data:
-          entity_id: ${speaker}
-          media_content_type: music
-          announce: "true"
-        data_template:
-          media_content_id: "{{ url }}"
-        variables:
-          url: !lambda return x;
-        on_error:
-          - binary_sensor.template.publish:
-              id: answer_playing
-              state: false
-          - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
-        on_success:
-          - binary_sensor.template.publish:
-              id: answer_playing
-              state: false
-          - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
-          - if:
-              condition:
-                lambda: return id(follow_ups) < 10;
-              then:
-                - lambda: id(follow_ups) += 1;
-                - script.execute: follow_up
   on_end:
     - if:
         condition:
@@ -164,6 +142,45 @@ voice_assistant:
   on_error:
     - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
 
+
+# Hands the answer to the room speaker; it reports announcing until that play_media call returns.
+media_player:
+  - platform: answer_relay
+    id: answer_player
+    name: Answer relay
+    internal: true
+    on_play_url:
+      - binary_sensor.template.publish:
+          id: answer_playing
+          state: true
+      - homeassistant.action:
+          action: media_player.play_media
+          data:
+            entity_id: ${speaker}
+            media_content_type: music
+            announce: "true"
+          data_template:
+            media_content_id: "{{ url }}"
+          variables:
+            url: !lambda return x;
+          on_error:
+            - lambda: id(answer_player).finish();
+            - binary_sensor.template.publish:
+                id: answer_playing
+                state: false
+            - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
+          on_success:
+            - lambda: id(answer_player).finish();
+            - binary_sensor.template.publish:
+                id: answer_playing
+                state: false
+            - lambda: lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
+            - if:
+                condition:
+                  lambda: return id(follow_ups) < 10;
+                then:
+                  - lambda: id(follow_ups) += 1;
+                  - script.execute: follow_up
 spi:
   id: display_qspi
   type: quad

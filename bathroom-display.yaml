@@ -232,7 +232,7 @@ touchscreen:
       - lambda: id(awake_until) = millis() + ${wake_ms};
       - script.execute: pick_page
 
-# On while the spoken answer plays on the speaker; AppDaemon AssistRooms never mutes then.
+# On while the spoken answer plays on the speaker; AppDaemon AssistRooms keeps the room music ducked then.
 binary_sensor:
   - platform: template
     id: answer_playing

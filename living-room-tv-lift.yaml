@@ -80,9 +80,11 @@ globals:
     initial_value: '{0,0,0,0,0,0,0,0}'
   - id: ext_val
     type: int16_t
+    restore_value: true
     initial_value: '0'
   - id: rot_val
     type: int16_t
+    restore_value: true
     initial_value: '0'
   - id: pending_ext
     type: int16_t
@@ -147,6 +149,7 @@ select:
   - platform: template
     name: "Position"
     optimistic: true
+    restore_value: true
     options:
       - "Wall"
       - "Kitchen"

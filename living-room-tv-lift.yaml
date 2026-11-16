@@ -142,6 +142,7 @@ sensor:
 
 interval:
   - interval: 30s
+    startup_delay: 30s
     then:
       - if:
           condition:

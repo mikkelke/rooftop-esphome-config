@@ -1,0 +1,11 @@
+substitutions:
+  name: ble-proxy-guest-bathroom
+  friendly_name: BLE proxy guest bathroom
+packages:
+  nanoc6: !include common/nanoc6-ble-proxy.yaml
+api:
+  encryption:
+    key: !secret ble_proxy_guest_bathroom_api_key
+ota:
+  - platform: esphome
+    password: !secret ble_proxy_guest_bathroom_ota_password

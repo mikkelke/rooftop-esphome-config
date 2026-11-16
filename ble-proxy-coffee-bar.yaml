@@ -1,0 +1,11 @@
+substitutions:
+  name: ble-proxy-coffee-bar
+  friendly_name: BLE proxy coffee bar
+packages:
+  nanoc6: !include common/nanoc6-ble-proxy.yaml
+api:
+  encryption:
+    key: !secret ble_proxy_coffee_bar_api_key
+ota:
+  - platform: esphome
+    password: !secret ble_proxy_coffee_bar_ota_password

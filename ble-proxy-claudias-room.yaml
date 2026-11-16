@@ -1,0 +1,11 @@
+substitutions:
+  name: ble-proxy-claudias-room
+  friendly_name: BLE proxy Claudias room
+packages:
+  nanoc6: !include common/nanoc6-ble-proxy.yaml
+api:
+  encryption:
+    key: !secret ble_proxy_claudias_room_api_key
+ota:
+  - platform: esphome
+    password: !secret ble_proxy_claudias_room_ota_password

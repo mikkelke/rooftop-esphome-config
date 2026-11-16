@@ -80,11 +80,9 @@ globals:
     initial_value: '{0,0,0,0,0,0,0,0}'
   - id: ext_val
     type: int16_t
-    restore_value: true
     initial_value: '0'
   - id: rot_val
     type: int16_t
-    restore_value: true
     initial_value: '0'
   - id: pending_ext
     type: int16_t
@@ -98,9 +96,58 @@ globals:
   - id: resolved_rot
     type: int16_t
     initial_value: '0'  # Resolved target rotation for current operation
+  - id: position_known
+    type: bool
+    initial_value: 'false'
+  - id: read_ext
+    type: int16_t
+    initial_value: '-32768'
+  - id: read_rot
+    type: int16_t
+    initial_value: '-32768'
   - id: operation_status
     type: std::string
     initial_value: '"idle"'
+
+############################################################
+# Actual mount position (read from the mount, big-endian int16)
+############################################################
+sensor:
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: mount
+    id: mount_extension
+    internal: true
+    service_uuid: $srv_uuid
+    characteristic_uuid: $chr_ctrl
+    update_interval: never
+    lambda: |-
+      if (x.size() < 2) return NAN;
+      return (float) int16_t((x[0] << 8) | x[1]);
+    on_value:
+      - lambda: 'if (!std::isnan(x)) id(read_ext) = int16_t(x);'
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: mount
+    id: mount_rotation
+    internal: true
+    service_uuid: $srv_uuid
+    characteristic_uuid: $chr_rot
+    update_interval: never
+    lambda: |-
+      if (x.size() < 2) return NAN;
+      return (float) int16_t((x[0] << 8) | x[1]);
+    on_value:
+      - lambda: 'if (!std::isnan(x)) id(read_rot) = int16_t(x);'
+
+interval:
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(position_known) && !id(smart_goto).is_running() && !id(read_position).is_running();'
+          then:
+            - script.execute: read_position
 
 ############################################################
 # Status sensor for operation visibility
@@ -147,9 +194,9 @@ number:
 
 select:
   - platform: template
+    id: position_select
     name: "Position"
     optimistic: true
-    restore_value: true
     options:
       - "Wall"
       - "Kitchen"
@@ -186,6 +233,45 @@ select:
 # Scripts
 ############################################################
 script:
+  # Reads the mount's actual position and publishes the select from it,
+  # so a reboot never reports a position the mount is not in.
+  - id: read_position
+    mode: single
+    then:
+      - lambda: |-
+          id(read_ext) = -32768;
+          id(read_rot) = -32768;
+      - esp32_ble_tracker.stop_scan
+      - ble_client.connect: mount
+      - wait_until:
+          timeout: 5s
+          condition:
+            lambda: 'return id(mount).is_ready();'
+      - if:
+          condition:
+            lambda: 'return id(mount).is_ready();'
+          then:
+            - component.update: mount_extension
+            - component.update: mount_rotation
+            - wait_until:
+                timeout: 3s
+                condition:
+                  lambda: 'return id(read_ext) != -32768 && id(read_rot) != -32768;'
+      - lambda: |-
+          if (id(read_ext) == -32768 || id(read_rot) == -32768) {
+            ESP_LOGW("BLE", "read_position: mount position not read, retrying later");
+            return;
+          }
+          id(ext_val) = id(read_ext);
+          id(rot_val) = id(read_rot);
+          id(position_known) = true;
+          const char *pos = id(ext_val) <= 10 ? "Wall" : (id(rot_val) <= 0 ? "Kitchen" : "Living room");
+          ESP_LOGI("BLE", "read_position: ext=%d rot=%d -> %s", id(ext_val), id(rot_val), pos);
+          id(position_select).publish_state(pos);
+      - ble_client.disconnect: mount
+      - esp32_ble_tracker.start_scan:
+          continuous: true
+
   # Unified motion planner with arbitration:
   # - Coalesces rapid commands: updates pending target instead of queuing
   # - If extension changes → ext+rot (chr_set) + final assert
@@ -198,6 +284,7 @@ script:
       target_ext: int
       target_rot: int
     then:
+      - script.stop: read_position
       # Update pending target (coalescing: latest command wins)
       - lambda: |-
           id(pending_ext) = int16_t(target_ext);
@@ -429,6 +516,7 @@ script:
             - lambda: |-
                 id(ext_val) = id(resolved_ext);
                 id(rot_val) = id(resolved_rot);
+                id(position_known) = true;
                 id(operation_status) = "idle";
 
             - ble_client.disconnect: mount

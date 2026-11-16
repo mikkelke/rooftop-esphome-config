@@ -220,7 +220,8 @@ script:
                 id(operation_status) = "idle";
                 // leave ext_val/rot_val unchanged
             - ble_client.disconnect: mount
-            - esp32_ble_tracker.start_scan
+            - esp32_ble_tracker.start_scan:
+                continuous: true
           else:
             # Connected OK
             - lambda: |-
@@ -428,4 +429,5 @@ script:
                 id(operation_status) = "idle";
 
             - ble_client.disconnect: mount
-            - esp32_ble_tracker.start_scan
+            - esp32_ble_tracker.start_scan:
+                continuous: true

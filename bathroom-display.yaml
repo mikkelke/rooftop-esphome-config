@@ -113,9 +113,16 @@ voice_assistant:
   media_player: answer_player
   on_client_connected:
     - micro_wake_word.start:
+  # An answer play_media call still out when HA goes away never returns, so it ends here.
   on_client_disconnected:
     - voice_assistant.stop:
     - micro_wake_word.stop:
+    - lambda: |-
+        id(answer_player).finish();
+        lv_obj_set_style_arc_color(id(ring), lv_color_hex(0x1A1A1D), LV_PART_MAIN);
+    - binary_sensor.template.publish:
+        id: answer_playing
+        state: false
   on_listening:
     - lambda: |-
         id(awake_until) = millis() + ${wake_ms};

@@ -262,9 +262,9 @@ font:
     glyphsets: [GF_Latin_Kernel]
   - file: "gfonts://Inter@400"
     id: f_text
-    size: 20
+    size: 19
     glyphsets: [GF_Latin_Kernel]
-    glyphs: ["±", "°", "–", "—", "’"]
+    glyphs: ["ÆØÅæøåÉé", "±", "°", "−", "–", "—", "’"]
   - file: "gfonts://Inter@500"
     id: f_label
     size: 17

@@ -36,7 +36,7 @@ struct AirQualityReading {
         std::snprintf(text, size, "Particles %.0f · air out", this->value);
         break;
       case AirMetric::Voc:
-        std::snprintf(text, size, "VOC %.0f · air out", this->value);
+        std::snprintf(text, size, "VOC high (%.0f) · air out", this->value);
         break;
       case AirMetric::Humidity:
         std::snprintf(text, size, "Dry air %.0f %% · humidifier", this->value);

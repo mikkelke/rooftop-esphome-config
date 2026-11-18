@@ -46,3 +46,61 @@ sensor:
     address: 0x66000000bb9c0528
     name: Floor heating return
     update_interval: 15s
+  - platform: dallas_temp
+    address: 0x88000000d32ef128
+    name: Zone 1 return
+    update_interval: 15s
+    filters:
+      - offset: 4.10
+  - platform: dallas_temp
+    address: 0x37000000d4c02628
+    name: Zone 2 return
+    update_interval: 15s
+    filters:
+      - offset: 3.92
+  - platform: dallas_temp
+    address: 0x88000000d5e5e128
+    name: Zone 3 return
+    update_interval: 15s
+    filters:
+      - offset: 3.75
+  - platform: dallas_temp
+    address: 0x78000000d4d00128
+    name: Zone 4 return
+    update_interval: 15s
+    filters:
+      - offset: 3.91
+  - platform: dallas_temp
+    address: 0xf1000000d6462f28
+    name: Zone 5 return
+    update_interval: 15s
+    filters:
+      - offset: 4.00
+  - platform: dallas_temp
+    address: 0x83000000d3aa6328
+    name: Zone 6 return
+    update_interval: 15s
+    filters:
+      - offset: 4.14
+  - platform: dallas_temp
+    address: 0x13000000d6c4fd28
+    name: Zone 7 return
+    update_interval: 15s
+    filters:
+      - offset: 4.05
+  - platform: dallas_temp
+    address: 0x64000000d6e91028
+    name: Primary supply
+    update_interval: 15s
+    filters:
+      - offset: 3.35
+  - platform: dallas_temp
+    address: 0xf7000000d65e5b28
+    name: Primary return
+    update_interval: 15s
+    filters:
+      - offset: 3.40
+
+button:
+  - platform: restart
+    name: Restart

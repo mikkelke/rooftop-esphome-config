@@ -1,0 +1,411 @@
+globals:
+  - id: blank_shown
+    type: bool
+    initial_value: 'true'
+  - id: face_night
+    type: bool
+    initial_value: 'false'
+  - id: night_awake
+    type: bool
+    initial_value: 'false'
+
+switch:
+  - platform: template
+    id: display_power
+    name: Display Power
+    icon: mdi:monitor
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_state:
+      - script.execute: pick_page
+
+number:
+  - platform: template
+    id: display_brightness
+    name: Display Brightness
+    icon: mdi:brightness-percent
+    unit_of_measurement: '%'
+    min_value: 0
+    max_value: 100
+    step: 1
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 82
+    on_value:
+      - script.execute: apply_brightness
+
+script:
+  - id: apply_brightness
+    then:
+      - lambda: |-
+          const auto now = id(ha_time).now();
+          const bool dim = !now.is_valid() || now.hour >= 23 || now.hour < 6;
+          float brightness = id(display_brightness).state / 100.0f;
+          if (!std::isfinite(brightness) || id(blank_shown)) brightness = 0;
+          else if (id(face_night)) brightness = std::min(brightness, 0.04f);
+          else if (dim) brightness = std::min(brightness, 0.19f);
+          static float last = -1;
+          if (brightness == last) return;
+          last = brightness;
+          auto call = id(display_backlight).make_call();
+          call.set_transition_length(0);
+          call.set_state(brightness > 0);
+          if (brightness > 0) call.set_brightness(brightness);
+          call.perform();
+  - id: pick_page
+    then:
+      - lambda: |-
+          const bool sleep = id(night_face).state == "on";
+          const auto &view = id(view).state;
+          const bool awake = sleep ? id(night_awake) : (view == "someone" || view == "mikkel");
+          const bool blank = !id(night_face).has_state() || !id(display_power).state || !awake;
+          if (id(blank_shown) == blank && id(face_night) == sleep) return;
+          id(blank_shown) = blank;
+          id(face_night) = sleep;
+          if (blank) id(apply_brightness).execute();
+          id(paint).execute();
+          id(paint_air).execute();
+          id(display_ui).show_page(blank ? id(blank_page)->index : id(main_page)->index, LV_SCREEN_LOAD_ANIM_NONE, 0);
+          if (!blank) id(apply_brightness).execute();
+  - id: wake_night
+    mode: restart
+    then:
+      - lambda: id(night_awake) = true;
+      - script.execute: pick_page
+      - delay: 30s
+      - lambda: id(night_awake) = false;
+      - script.execute: pick_page
+  - id: button_short
+    then:
+      - if:
+          condition:
+            lambda: return id(night_face).state == "on";
+          then:
+            - script.execute: wake_night
+          else:
+            - homeassistant.event:
+                event: esphome.bedroom_display_play
+  - id: button_long
+    then:
+      - if:
+          condition:
+            lambda: return id(night_face).state == "on";
+          then:
+            - script.execute: wake_night
+      - homeassistant.event:
+          event: esphome.bedroom_display_alarm
+  - id: paint_weather
+    then:
+      - lambda: |-
+          static const std::map<std::string, std::string> icon = {
+            {"clear-night", "mdi:weather-night"}, {"cloudy", "mdi:weather-cloudy"},
+            {"exceptional", "mdi:help-circle-outline"}, {"fog", "mdi:weather-fog"}, {"hail", "mdi:weather-hail"},
+            {"lightning", "mdi:weather-lightning"}, {"lightning-rainy", "mdi:weather-lightning-rainy"},
+            {"partlycloudy", "mdi:weather-partly-cloudy"}, {"pouring", "mdi:weather-pouring"},
+            {"rainy", "mdi:weather-rainy"}, {"snowy", "mdi:weather-snowy"}, {"snowy-rainy", "mdi:weather-snowy-rainy"},
+            {"sunny", "mdi:weather-sunny"}, {"windy", "mdi:weather-windy"}, {"windy-variant", "mdi:weather-windy-variant"}};
+          const std::string &w = id(weather_state).state;
+          auto it = icon.find(w);
+          lv_label_set_text(id(weather_icon), mdi_glyph(it != icon.end() ? it->second : "").c_str());
+          uint32_t tint = 0x94A3B8;
+          if (w == "sunny" || w == "lightning" || w == "lightning-rainy") tint = 0xFBBF24;
+          else if (w == "partlycloudy") tint = 0xFCD34D;
+          else if (w == "rainy" || w == "pouring" || w == "hail") tint = 0x38BDF8;
+          else if (w == "snowy" || w == "snowy-rainy") tint = 0xE0F2FE;
+          else if (w == "clear-night") tint = 0xC4B5FD;
+          lv_obj_set_style_text_color(id(weather_icon), lv_color_hex(tint), LV_PART_MAIN);
+          char buf[16];
+          if (std::isnan(id(outdoor_temp).state)) buf[0] = 0;
+          else snprintf(buf, sizeof(buf), "%.0f°", id(outdoor_temp).state);
+          lv_label_set_text(id(weather_text), buf);
+          lv_obj_clear_flag(id(weather_icon), LV_OBJ_FLAG_HIDDEN);
+  - id: paint
+    then:
+      - lambda: |-
+          const auto set_visible = [](lv_obj_t *widget, bool visible) {
+            if (visible) lv_obj_clear_flag(widget, LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(widget, LV_OBJ_FLAG_HIDDEN);
+          };
+          const bool sleep = id(face_night);
+          const bool resident = id(view).state == "mikkel";
+          lv_label_set_text(id(greet_label), resident ? id(greeting).state.c_str() : "");
+          set_visible(id(greet_label), !sleep && resident);
+          set_visible(id(weather_row), !sleep);
+          set_visible(id(lines), !sleep && resident);
+          lv_obj_align(id(clock_label), LV_ALIGN_TOP_MID, 0, sleep ? 140 : 65);
+          lv_obj_set_style_text_color(id(clock_label), lv_color_hex(sleep ? 0xFBBF24 : 0xFFFFFF), LV_PART_MAIN);
+          set_visible(id(night_row), sleep && !id(line1).state.empty());
+          lv_label_set_text(id(night_icon), mdi_glyph(id(icon1).state).c_str());
+          lv_label_set_text(id(night_label), id(line1).state.c_str());
+
+          lv_obj_t *rows[] = {id(row1), id(row2), id(row3)};
+          lv_obj_t *icons[] = {id(row1_icon), id(row2_icon), id(row3_icon)};
+          lv_obj_t *labels[] = {id(row1_text), id(row2_text), id(row3_text)};
+          lv_obj_t *chips[] = {id(row1_due), id(row2_due), id(row3_due)};
+          const std::string *titles[] = {&id(line1).state, &id(line2).state, &id(line3).state};
+          const std::string *glyphs[] = {&id(icon1).state, &id(icon2).state, &id(icon3).state};
+          const std::string *dues[] = {&id(due1).state, &id(due2).state, &id(due3).state};
+          for (size_t i = 0; i < 3; ++i) {
+            set_visible(rows[i], !titles[i]->empty());
+            if (titles[i]->empty()) continue;
+            const bool late = *dues[i] == "overdue";
+            lv_label_set_text(icons[i], mdi_glyph(*glyphs[i]).c_str());
+            lv_label_set_text(labels[i], titles[i]->c_str());
+            lv_label_set_text(chips[i], late ? "now" : dues[i]->c_str());
+            set_visible(chips[i], !dues[i]->empty());
+            lv_obj_set_style_text_color(chips[i], lv_color_hex(late ? 0xFB7185 : 0xD4D4D8), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(chips[i], lv_color_hex(late ? 0x231013 : 0x252528), LV_PART_MAIN);
+          }
+
+text_sensor:
+  - platform: homeassistant
+    id: view
+    entity_id: sensor.bedroom_display
+    on_value:
+      - script.execute: pick_page
+      - script.execute: paint
+  - platform: homeassistant
+    id: greeting
+    entity_id: sensor.bedroom_display
+    attribute: greeting
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: line1
+    entity_id: sensor.bedroom_display
+    attribute: line1
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: line2
+    entity_id: sensor.bedroom_display
+    attribute: line2
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: line3
+    entity_id: sensor.bedroom_display
+    attribute: line3
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: icon1
+    entity_id: sensor.bedroom_display
+    attribute: icon1
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: icon2
+    entity_id: sensor.bedroom_display
+    attribute: icon2
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: icon3
+    entity_id: sensor.bedroom_display
+    attribute: icon3
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: due1
+    entity_id: sensor.bedroom_display
+    attribute: due1
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: due2
+    entity_id: sensor.bedroom_display
+    attribute: due2
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: due3
+    entity_id: sensor.bedroom_display
+    attribute: due3
+    on_value: [script.execute: paint]
+  - platform: homeassistant
+    id: night_face
+    entity_id: sensor.bedroom_display
+    attribute: night
+    on_value:
+      - if:
+          condition:
+            lambda: return x != "on";
+          then:
+            - script.stop: wake_night
+            - lambda: id(night_awake) = false;
+      - script.execute: pick_page
+  - platform: homeassistant
+    id: weather_state
+    entity_id: weather.forecast_home
+    on_value: [script.execute: paint_weather]
+
+sensor:
+  - platform: homeassistant
+    id: outdoor_temp
+    entity_id: weather.forecast_home
+    attribute: temperature
+    on_value: [script.execute: paint_weather]
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          const auto now = id(ha_time).now();
+          const int minute = now.is_valid() ? now.hour * 60 + now.minute : -1;
+          static int last = -2;
+          if (minute == last) return;
+          last = minute;
+          lv_label_set_text(id(clock_label), now.is_valid() ? now.strftime("%H:%M").c_str() : "--:--");
+          id(apply_brightness).execute();
+
+font:
+  - file: "gfonts://Inter@300"
+    id: f_clock
+    size: 98
+    glyphs: "0123456789:-"
+  - file: "gfonts://Inter@500"
+    id: f_greet
+    size: 18
+    glyphsets: [GF_Latin_Core]
+  - file: "gfonts://Inter@400"
+    id: f_text
+    size: 20
+    glyphsets: [GF_Latin_Core]
+    glyphs: ["±"]
+  - file: "gfonts://Inter@500"
+    id: f_label
+    size: 17
+    glyphsets: [GF_Latin_Core]
+    glyphs: ["±", "·", "↑", "↓"]
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
+    id: f_icon
+    size: 26
+    glyphs: ["\U000F0020", "\U000F0FD7", "\U000F0068", "\U000F18E5", "\U000F10CD", "\U000F12A4", "\U000F19E6", "\U000F1835", "\U000F0A30", "\U000F0D5D", "\U000F0110", "\U000F05E1", "\U000F0B7C", "\U000F109F", "\U000F0AAC", "\U000F081C", "\U000F024A", "\U000F0625", "\U000F02DA", "\U000F02FD", "\U000F0319", "\U000F032A", "\U000F0FC6", "\U000F0374", "\U000F0A07", "\U000F1086", "\U000F075A", "\U000F0387", "\U000F03D7", "\U000F03E4", "\U000F040A", "\U000F0415", "\U000F0439", "\U000F070D", "\U000F0473", "\U000F04AD", "\U000F04AE", "\U000F04C7", "\U000F0665", "\U000F0E66", "\U000F0502", "\U000F11FC", "\U000F052C", "\U000F053E", "\U000F0917", "\U000F19A1", "\U000F072A", "\U000F058C", "\U000F058E", "\U000F1482", "\U000F0590", "\U000F0591", "\U000F0592", "\U000F0593", "\U000F067E", "\U000F0594", "\U000F0595", "\U000F0596", "\U000F0597", "\U000F0598", "\U000F067F", "\U000F0599", "\U000F059D", "\U000F059E"]
+
+lvgl:
+  id: display_ui
+  displays: [display_panel]
+  byte_order: little_endian
+  buffer_size: 25%
+  bg_color: 0x000000
+  default_font: f_text
+  style_definitions:
+    - id: bare
+      bg_opa: TRANSP
+      border_width: 0
+      outline_width: 0
+      shadow_width: 0
+      pad_all: 0
+  pages:
+    - id: blank_page
+      bg_color: 0x000000
+      widgets: []
+    - id: main_page
+      bg_color: 0x000000
+      pad_all: 0
+      widgets:
+        - obj:
+            id: air_ring
+            styles: bare
+            align: CENTER
+            width: 476
+            height: 476
+            radius: 238
+            border_width: 3
+            hidden: true
+            scrollable: false
+        - label:
+            id: greet_label
+            align: TOP_MID
+            y: 48
+            text_font: f_greet
+            text_color: 0xFBBF24
+            text_letter_space: 1
+            text: ''
+        - label:
+            id: clock_label
+            align: TOP_MID
+            y: 65
+            text_font: f_clock
+            text_color: 0xFFFFFF
+            text: '--:--'
+        - obj:
+            id: weather_row
+            styles: bare
+            align: TOP_MID
+            y: 170
+            width: 350
+            height: 31
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: CENTER
+              flex_align_cross: CENTER
+              pad_column: 8
+            widgets:
+              - label:
+                  id: weather_icon
+                  text_font: f_icon
+                  text_color: 0xA1A1AA
+                  text: ''
+              - label:
+                  id: weather_text
+                  text_color: 0xA1A1AA
+                  text: ''
+        - obj:
+            id: air_chip
+            styles: bare
+            align: TOP_MID
+            y: 209
+            width: 355
+            height: 31
+            hidden: true
+            scrollable: false
+            bg_color: 0x19191C
+            bg_opa: COVER
+            radius: 16
+            widgets:
+              - label:
+                  id: air_chip_text
+                  align: CENTER
+                  text_font: f_label
+                  text: ''
+        - obj:
+            id: lines
+            styles: bare
+            align: TOP_MID
+            y: 248
+            width: 360
+            height: 144
+            scrollable: false
+            layout:
+              type: FLEX
+              flex_flow: COLUMN
+              flex_align_cross: CENTER
+              pad_row: 5
+            widgets:
+              - !include {file: line.yaml, vars: {row: row1}}
+              - !include {file: line.yaml, vars: {row: row2}}
+              - !include {file: line.yaml, vars: {row: row3}}
+        - obj:
+            id: night_row
+            styles: bare
+            align: TOP_MID
+            y: 269
+            width: 246
+            height: 56
+            hidden: true
+            scrollable: false
+            bg_color: 0x161618
+            bg_opa: COVER
+            radius: 28
+            layout:
+              type: FLEX
+              flex_flow: ROW
+              flex_align_main: CENTER
+              flex_align_cross: CENTER
+              pad_column: 12
+            widgets:
+              - label:
+                  id: night_icon
+                  text_font: f_icon
+                  text_color: 0xFBBF24
+                  text: ''
+              - label:
+                  id: night_label
+                  text_color: 0xE4E4E7
+                  text: ''

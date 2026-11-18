@@ -1,0 +1,43 @@
+substitutions:
+  git_rev: unknown
+
+esphome:
+  name: bedroom-display
+  friendly_name: AirDot bedroom
+  project:
+    name: mikkel.bedroom-display
+    version: ${git_rev}
+  includes:
+    - bedroom-display/mdi_glyph.h
+
+packages:
+  hardware: !include bedroom-display/hardware.yaml
+  display: !include bedroom-display/display.yaml
+  air_quality: !include bedroom-display/air-quality.yaml
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+api:
+  encryption:
+    key: !secret bedroom_display_api_key
+
+ota:
+  - platform: esphome
+    password: !secret bedroom_display_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+time:
+  - platform: homeassistant
+    id: ha_time
+    timezone: Europe/Copenhagen
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+bluetooth_proxy:
+  active: false

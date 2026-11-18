@@ -1,0 +1,78 @@
+esphome:
+  includes:
+    - bedroom-display/air_quality.h
+
+globals:
+  - id: air_quality
+    type: bedroom_display::AirQuality
+
+text_sensor:
+  - platform: template
+    id: air_quality_status
+    name: Air Quality
+    icon: mdi:air-filter
+    update_interval: never
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          id(air_quality).sample(id(co2).state, id(pm25).state, id(voc).state, id(air_humidity).state);
+          const char *level = id(air_quality).reading.level_name();
+          if (*level && id(air_quality_status).state != level)
+            id(air_quality_status).publish_state(level);
+      - script.execute: paint_air
+
+script:
+  - id: paint_air
+    then:
+      - lambda: |-
+          using bedroom_display::AirLevel;
+          const auto &reading = id(air_quality).reading;
+          const auto level = id(face_night) || id(blank_shown) ? AirLevel::Unknown : reading.level;
+          static auto shown = AirLevel::Unknown;
+          auto *ring = id(air_ring);
+          auto *chip = id(air_chip);
+          auto breathe = +[](void *widget, int32_t step) {
+            const int32_t phase = 20 - std::abs(20 - step);
+            const int32_t eased = phase * phase * (60 - 2 * phase);
+            const auto opacity = static_cast<lv_opa_t>(89 + 166 * eased / 8000);
+            auto *object = static_cast<lv_obj_t *>(widget);
+            if (lv_obj_get_style_border_opa(object, LV_PART_MAIN) != opacity)
+              lv_obj_set_style_border_opa(object, opacity, LV_PART_MAIN);
+          };
+
+          if (level != shown) {
+            shown = level;
+            lv_anim_delete(ring, breathe);
+            lv_obj_add_flag(chip, LV_OBJ_FLAG_HIDDEN);
+            if (level == AirLevel::Unknown) {
+              lv_obj_add_flag(ring, LV_OBJ_FLAG_HIDDEN);
+            } else {
+              lv_obj_clear_flag(ring, LV_OBJ_FLAG_HIDDEN);
+              if (level == AirLevel::Good) {
+                lv_obj_set_style_border_color(ring, lv_color_hex(0x22C55E), LV_PART_MAIN);
+                lv_obj_set_style_border_opa(ring, LV_OPA_20, LV_PART_MAIN);
+              } else {
+                const auto color = lv_color_hex(level == AirLevel::Poor ? 0xF87171 : 0xFBBF24);
+                lv_obj_set_style_border_color(ring, color, LV_PART_MAIN);
+                lv_obj_set_style_text_color(id(air_chip_text), color, LV_PART_MAIN);
+                lv_obj_clear_flag(chip, LV_OBJ_FLAG_HIDDEN);
+                lv_anim_t animation;
+                lv_anim_init(&animation);
+                lv_anim_set_var(&animation, ring);
+                lv_anim_set_exec_cb(&animation, breathe);
+                lv_anim_set_values(&animation, 0, 40);
+                lv_anim_set_duration(&animation, 4000);
+                lv_anim_set_repeat_count(&animation, LV_ANIM_REPEAT_INFINITE);
+                lv_anim_start(&animation);
+              }
+            }
+          }
+
+          if (level >= AirLevel::Moderate) {
+            char text[56];
+            reading.format_chip(text, sizeof(text));
+            if (std::strcmp(lv_label_get_text(id(air_chip_text)), text) != 0)
+              lv_label_set_text(id(air_chip_text), text);
+          }

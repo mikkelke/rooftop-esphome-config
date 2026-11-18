@@ -1,0 +1,35 @@
+obj:
+  id: ${row}
+  styles: bare
+  width: 360
+  height: 44
+  hidden: true
+  scrollable: false
+  layout:
+    type: FLEX
+    flex_flow: ROW
+    flex_align_cross: CENTER
+    pad_column: 10
+  widgets:
+    - label:
+        id: ${row}_icon
+        width: 28
+        text_font: f_icon
+        text_color: 0xE4E4E7
+        text: ''
+    - label:
+        id: ${row}_text
+        flex_grow: 1
+        long_mode: DOT
+        text_color: 0xE4E4E7
+        text: ''
+    - label:
+        id: ${row}_due
+        text_font: f_label
+        bg_opa: COVER
+        radius: 12
+        pad_left: 8
+        pad_right: 8
+        pad_top: 3
+        pad_bottom: 3
+        text: ''

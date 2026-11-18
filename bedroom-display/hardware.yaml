@@ -1,0 +1,182 @@
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - component.suspend: sen66_air_quality_sensor
+      - delay: 2s
+      - lambda: |-
+          // SEN66 temperature offset in units of 1/200 °C, with slope and time constant zero, slot 0.
+          const uint16_t offset[] = {static_cast<uint16_t>(-860), 0, 0, 0};
+          if (!id(sen66_air_quality_sensor).write_command(static_cast<uint16_t>(0x60B2), offset, 4)) {
+            ESP_LOGW("airdot", "Could not set SEN66 temperature compensation");
+          }
+      - delay: 20ms
+      - component.resume: sen66_air_quality_sensor
+
+esp32:
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+external_components:
+  - source:
+      type: local
+      path: bedroom-display/components
+    components: [nhd_2_1_480480af_asxp, ltr303als]
+
+i2c:
+  scl: GPIO4
+  sda: GPIO5
+  scan: false
+  frequency: 50kHz
+
+display:
+  - platform: nhd_2_1_480480af_asxp
+    id: display_panel
+    pclk_frequency: 13MHz
+    pclk_inverted: false
+    hsync_front_porch: 50
+    hsync_back_porch: 50
+    vsync_front_porch: 50
+    vsync_back_porch: 50
+    auto_clear_enabled: false
+    update_interval: never
+
+output:
+  - platform: ledc
+    id: display_backlight_pwm
+    pin: GPIO44
+    frequency: 1000Hz
+  - platform: ledc
+    id: buzzer_pwm
+    pin: GPIO7
+    frequency: 2700Hz
+
+light:
+  - platform: monochromatic
+    id: display_backlight
+    internal: true
+    output: display_backlight_pwm
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 0s
+    gamma_correct: 1.0
+
+switch:
+  - platform: template
+    name: Buzzer
+    icon: mdi:volume-high
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - output.set_level:
+          id: buzzer_pwm
+          level: 50%
+    turn_off_action:
+      - output.turn_off: buzzer_pwm
+
+globals:
+  - id: button_pressed_at
+    type: uint32_t
+    initial_value: "0"
+  - id: ambient_pressure_hpa
+    type: uint16_t
+    initial_value: "0"
+
+binary_sensor:
+  - platform: gpio
+    id: action_button
+    name: Action Button
+    icon: mdi:gesture-tap-button
+    pin:
+      number: GPIO6
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on_off: 30ms
+    on_press:
+      - lambda: id(button_pressed_at) = millis();
+    on_release:
+      - lambda: |-
+          const uint32_t pressed_at = id(button_pressed_at);
+          id(button_pressed_at) = 0;
+          if (pressed_at == 0) {
+            return;
+          }
+          const uint32_t duration = millis() - pressed_at;
+          if (duration >= 1000) {
+            id(button_long).execute();
+          } else if (duration >= 50) {
+            id(button_short).execute();
+          }
+
+sensor:
+  - platform: sen6x
+    id: sen66_air_quality_sensor
+    type: SEN66
+    update_interval: 1s
+    pm_1_0:
+      name: PM1
+    pm_2_5:
+      id: pm25
+      name: PM2.5
+    pm_4_0:
+      name: PM4
+    pm_10_0:
+      name: PM10
+    temperature:
+      name: Temperature
+    humidity:
+      id: air_humidity
+      name: Humidity
+    voc_index:
+      id: voc
+      name: VOC Index
+      unit_of_measurement: index
+      icon: mdi:molecule
+    nox_index:
+      name: NOx Index
+      unit_of_measurement: index
+      icon: mdi:molecule
+      filters:
+        - lambda: |-
+            return std::isfinite(x) ? std::clamp(std::round(x), 1.0f, 500.0f) : x;
+    co2:
+      id: co2
+      name: CO2
+      on_raw_value:
+        - lambda: |-
+            static uint16_t last_hpa = 0;
+            const uint16_t hpa = id(ambient_pressure_hpa);
+            if (hpa != 0 && hpa != last_hpa &&
+                id(sen66_air_quality_sensor).write_command(static_cast<uint16_t>(0x6720), hpa)) {
+              last_hpa = hpa;
+            }
+
+  - platform: spa06_i2c
+    address: 0x76
+    update_interval: 1s
+    pressure:
+      name: Pressure
+      unit_of_measurement: hPa
+      on_raw_value:
+        - lambda: |-
+            // The SPA06 reports Pa. The SEN66 ambient pressure command expects whole hPa.
+            if (std::isfinite(x) && x >= 70000.0f && x <= 120000.0f) {
+              id(ambient_pressure_hpa) = std::lround(x / 100.0f);
+            }
+      filters:
+        - lambda: return std::trunc(x / 100.0f);
+
+  - platform: ltr303als
+    name: Light
+    address: 0x29
+    update_interval: 10s
+    window_correction: 4
+    accuracy_decimals: 0

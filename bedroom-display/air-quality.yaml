@@ -2,10 +2,6 @@ esphome:
   includes:
     - bedroom-display/air_quality.h
 
-globals:
-  - id: air_quality
-    type: bedroom_display::AirQuality
-
 text_sensor:
   - platform: template
     id: air_quality_status
@@ -17,8 +13,9 @@ interval:
   - interval: 1s
     then:
       - lambda: |-
-          id(air_quality).sample(id(co2).state, id(pm25).state, id(voc).state, id(air_humidity).state);
-          const char *level = id(air_quality).reading.level_name();
+          auto &air = bedroom_display::air_quality();
+          air.sample(id(co2).state, id(pm25).state, id(voc).state, id(air_humidity).state);
+          const char *level = air.reading.level_name();
           if (*level && id(air_quality_status).state != level)
             id(air_quality_status).publish_state(level);
       - script.execute: paint_air
@@ -28,7 +25,7 @@ script:
     then:
       - lambda: |-
           using bedroom_display::AirLevel;
-          const auto &reading = id(air_quality).reading;
+          const auto &reading = bedroom_display::air_quality().reading;
           const auto level = id(face_night) || id(blank_shown) ? AirLevel::Unknown : reading.level;
           static auto shown = AirLevel::Unknown;
           auto *ring = id(air_ring);

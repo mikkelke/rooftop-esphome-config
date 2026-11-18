@@ -136,4 +136,9 @@ class AirQuality {
   }
 };
 
+inline AirQuality &air_quality() {
+  static AirQuality air;
+  return air;
+}
+
 }  // namespace bedroom_display

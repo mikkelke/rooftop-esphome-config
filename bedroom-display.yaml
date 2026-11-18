@@ -24,7 +24,7 @@ api:
 
 ota:
   - platform: esphome
-    password: !secret bedroom_display_ota_password
+    encryption:
 
 wifi:
   ssid: !secret wifi_ssid

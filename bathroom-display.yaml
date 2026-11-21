@@ -20,7 +20,8 @@ substitutions:
 # Its night attribute is "on" in sleep mode, and the face is then only the clock and the alarm line (line1).
 # The play button fires esphome.bathroom_display_play; BathroomDisplay pauses, resumes or starts the radio.
 # A tap on an alarm line, in a chip or on the night face, fires esphome.bathroom_display_alarm; BathroomDisplay
-# toggles the wake-up alarm.
+# toggles the wake-up alarm. A tap on the Spotify chip (Mikkel's Spotify playing on his own device) fires
+# esphome.bathroom_display_spotify; BathroomDisplay plays it on the speaker. Its line fills the empty media row.
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
@@ -408,7 +409,8 @@ script:
           lv_label_set_text(id(weather_text), lines[n]->c_str());
       - delay: 6s
       - script.execute: paint_weather
-  # The alarm line toggles the alarm; any other shows its full text in place of the weather.
+  # The alarm line toggles the alarm and the Spotify line plays it here; any other shows its full text in place
+  # of the weather.
   - id: tap_chip
     parameters:
       n: int
@@ -422,9 +424,18 @@ script:
             - homeassistant.event:
                 event: esphome.bathroom_display_alarm
           else:
-            - script.execute:
-                id: show_detail
-                n: !lambda "return n;"
+            - if:
+                condition:
+                  lambda: |-
+                    const std::string *glyphs[3] = {&id(icon1).state, &id(icon2).state, &id(icon3).state};
+                    return *glyphs[n] == "mdi:spotify";
+                then:
+                  - homeassistant.event:
+                      event: esphome.bathroom_display_spotify
+                else:
+                  - script.execute:
+                      id: show_detail
+                      n: !lambda "return n;"
   - id: paint
     then:
       - lambda: |-
@@ -471,6 +482,7 @@ script:
             if (!lv_obj_has_flag(chips[i], LV_OBJ_FLAG_HIDDEN))
               ESP_LOGD("chips", "%d %s '%s'", i + 1, glyphs[i]->c_str(), lv_label_get_text(labels[i]));
       - script.execute: paint_media
+      - script.execute: paint_title
       - script.execute: pick_page
   - id: paint_media
     then:
@@ -551,6 +563,11 @@ script:
             sub = usable(artist) ? artist : usable(album) ? album : "";
           } else if (live && usable(album)) {
             main = album;
+          } else if (!live && id(view).state == "mikkel") {
+            const std::string *lines[3] = {&id(line1).state, &id(line2).state, &id(line3).state};
+            const std::string *glyphs[3] = {&id(icon1).state, &id(icon2).state, &id(icon3).state};
+            for (int i = 0; i < 3; i++)
+              if (*glyphs[i] == "mdi:spotify") { main = *lines[i]; break; }
           }
           if (sub == main) sub = "";
           lv_label_set_text(id(title_label), main.c_str());

@@ -15,7 +15,7 @@ api:
                 std::none_of(message.begin(), message.end(), [](unsigned char c) {
                   return (c < ' ' && c != '\n') || c == 0x7f;
                 });
-            if (duration_seconds < 1 || duration_seconds > 7200 || !valid_message ||
+            if (duration_seconds < 0 || duration_seconds > 7200 || !valid_message ||
                 (!has_message && !has_qr)) {
               ESP_LOGW("display_notice", "Invalid text or duration");
               return;
@@ -51,7 +51,12 @@ api:
             id(notice_active) = true;
             lv_obj_clear_flag(id(notice_overlay), LV_OBJ_FLAG_HIDDEN);
             id(apply_brightness).execute();
-            id(notice_timeout).execute(duration_seconds);
+            // A zero duration leaves the notice up until dismissal or reboot.
+            if (duration_seconds == 0) {
+              id(notice_timeout).stop();
+            } else {
+              id(notice_timeout).execute(duration_seconds);
+            }
     - action: dismiss_notice
       then:
         - script.stop: notice_timeout

@@ -82,19 +82,12 @@ script:
     then:
       - if:
           condition:
-            lambda: return id(notice_active) && id(display_power).state;
+            lambda: return id(night_face).state == "on";
           then:
-            - script.stop: notice_timeout
-            - script.execute: clear_notice
+            - script.execute: wake_night
           else:
-            - if:
-                condition:
-                  lambda: return id(night_face).state == "on";
-                then:
-                  - script.execute: wake_night
-                else:
-                  - homeassistant.event:
-                      event: esphome.bedroom_display_play
+            - homeassistant.event:
+                event: esphome.bedroom_display_play
   - id: button_long
     then:
       - if:

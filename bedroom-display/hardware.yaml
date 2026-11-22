@@ -101,7 +101,16 @@ binary_sensor:
     filters:
       - delayed_on_off: 30ms
     on_press:
-      - lambda: id(button_pressed_at) = millis();
+      - lambda: |-
+          if (id(notice_active)) {
+            // Consume the release so dismissing a notice cannot also play music or toggle the alarm.
+            id(button_pressed_at) = 0;
+            id(notice_timeout).stop();
+            id(clear_notice).execute();
+            ESP_LOGD("display_notice", "Dismissed by action button");
+            return;
+          }
+          id(button_pressed_at) = millis();
     on_release:
       - lambda: |-
           const uint32_t pressed_at = id(button_pressed_at);

@@ -10,9 +10,13 @@ substitutions:
   vol_step: "0.04"
   # AMOLED brightness of the night face, 0x00 to 0xFF.
   night_brightness: "0x10"
+  notice_close_label: Luk
   ha_url: "http://10.21.0.5:8123"
   # The build passes the short git commit with -s git_rev.
   git_rev: unknown
+
+packages:
+  notice: !include common/display-notice.yaml
 
 # VIEWE SmartRing 1.75" (factory SKU viewe-uedx46460-1.75): ESP32-S3R8, 16 MB flash,
 # 466x466 CO5300 AMOLED on QSPI, CST816S touch. Pins per VIEWESMART/VIEWE-SMARTRING.
@@ -237,8 +241,12 @@ touchscreen:
       ignore_strapping_warning: true
     skip_probe: true
     on_touch:
-      - lambda: id(awake_until) = millis() + ${wake_ms};
-      - script.execute: pick_page
+      - if:
+          condition:
+            lambda: return !id(notice_active);
+          then:
+            - lambda: id(awake_until) = millis() + ${wake_ms};
+            - script.execute: pick_page
 
 # On while the spoken answer plays on the speaker; AppDaemon AssistRooms keeps the room music ducked then.
 binary_sensor:
@@ -354,11 +362,15 @@ script:
                 not:
                   voice_assistant.is_running:
             - micro_wake_word.start:
-  # The night face's brightness while it is up, else dim from 23 to 06.
+  # The notice is dimmer than the daytime face and stays readable in sleep mode.
   - id: apply_brightness
     then:
       - lambda: |-
-          id(amoled).set_brightness(id(face_night) ? ${night_brightness} : (id(night) ? 0x30 : 0xD0));
+          if (id(notice_active)) {
+            id(amoled).set_brightness(id(face_night) || id(night) ? 0x30 : 0x50);
+          } else {
+            id(amoled).set_brightness(id(face_night) ? ${night_brightness} : (id(night) ? 0x30 : 0xD0));
+          }
   - id: pick_page
     then:
       - if:

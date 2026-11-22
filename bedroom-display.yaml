@@ -14,7 +14,7 @@ packages:
   hardware: !include bedroom-display/hardware.yaml
   display: !include bedroom-display/display.yaml
   air_quality: !include bedroom-display/air-quality.yaml
-  notice: !include bedroom-display/notice.yaml
+  notice: !include common/display-notice.yaml
 
 logger:
   hardware_uart: USB_SERIAL_JTAG

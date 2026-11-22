@@ -1,3 +1,6 @@
+substitutions:
+  notice_close_label: ""
+
 api:
   actions:
     - action: show_notice
@@ -105,13 +108,17 @@ lvgl:
           id: notice_overlay
           styles: bare
           align: CENTER
-          width: 480
-          height: 480
+          width: 100%
+          height: 100%
           radius: 0
           bg_color: 0x170D11
           bg_opa: COVER
           hidden: true
           scrollable: false
+          clickable: true
+          on_click:
+            - script.stop: notice_timeout
+            - script.execute: clear_notice
           widgets:
             - label:
                 id: notice_message
@@ -123,6 +130,7 @@ lvgl:
                 text_font: f_notice
                 text_color: 0xFFF2DF
                 text: ''
+                clickable: false
             - obj:
                 id: notice_qr_frame
                 styles: bare
@@ -134,8 +142,17 @@ lvgl:
                 bg_opa: COVER
                 hidden: true
                 scrollable: false
+                clickable: false
                 widgets:
                   - qrcode:
                       id: notice_qr
                       align: CENTER
                       size: 224
+                      clickable: false
+            - label:
+                align: CENTER
+                y: 201
+                text_font: f_notice
+                text_color: 0xFFF2DF
+                text: ${notice_close_label}
+                clickable: false

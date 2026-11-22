@@ -18,6 +18,7 @@ switch:
     restore_mode: RESTORE_DEFAULT_ON
     on_state:
       - script.execute: pick_page
+      - script.execute: apply_brightness
 
 number:
   - platform: template
@@ -41,10 +42,11 @@ script:
       - lambda: |-
           const auto now = id(ha_time).now();
           const bool dim = !now.is_valid() || now.hour >= 23 || now.hour < 6;
+          const bool notice = id(notice_active) && id(display_power).state;
           float brightness = id(display_brightness).state / 100.0f;
-          if (!std::isfinite(brightness) || id(blank_shown)) brightness = 0;
-          else if (id(face_night)) brightness = std::min(brightness, 0.04f);
-          else if (dim) brightness = std::min(brightness, 0.19f);
+          if (!std::isfinite(brightness) || (id(blank_shown) && !notice)) brightness = 0;
+          else if (id(face_night) && !notice) brightness = std::min(brightness, 0.04f);
+          else if (dim || id(face_night)) brightness = std::min(brightness, 0.19f);
           static float last = -1;
           if (brightness == last) return;
           last = brightness;
@@ -80,12 +82,19 @@ script:
     then:
       - if:
           condition:
-            lambda: return id(night_face).state == "on";
+            lambda: return id(notice_active) && id(display_power).state;
           then:
-            - script.execute: wake_night
+            - script.stop: notice_timeout
+            - script.execute: clear_notice
           else:
-            - homeassistant.event:
-                event: esphome.bedroom_display_play
+            - if:
+                condition:
+                  lambda: return id(night_face).state == "on";
+                then:
+                  - script.execute: wake_night
+                else:
+                  - homeassistant.event:
+                      event: esphome.bedroom_display_play
   - id: button_long
     then:
       - if:

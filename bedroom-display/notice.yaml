@@ -1,0 +1,136 @@
+api:
+  actions:
+    - action: show_notice
+      variables:
+        message: string
+        qr_url: string
+        duration_seconds: int
+      then:
+        - lambda: |-
+            const std::string_view text(message.c_str(), message.size());
+            const std::string_view url(qr_url.c_str(), qr_url.size());
+            const bool has_message = text.find_first_not_of(" \n") != std::string_view::npos;
+            const bool has_qr = !qr_url.empty();
+            const bool valid_message = message.size() <= 120 &&
+                std::none_of(message.begin(), message.end(), [](unsigned char c) {
+                  return (c < ' ' && c != '\n') || c == 0x7f;
+                });
+            if (duration_seconds < 1 || duration_seconds > 7200 || !valid_message ||
+                (!has_message && !has_qr)) {
+              ESP_LOGW("display_notice", "Invalid text or duration");
+              return;
+            }
+
+            if (has_qr) {
+              const size_t scheme_length = url.compare(0, 8, "https://") == 0 ? 8 :
+                  url.compare(0, 7, "http://") == 0 ? 7 : 0;
+              if (scheme_length == 0 || qr_url.size() <= scheme_length || qr_url.size() > 160 ||
+                  url.find_first_of("/?#", scheme_length) == scheme_length ||
+                  std::any_of(qr_url.begin(), qr_url.end(), [](unsigned char c) {
+                    return c <= ' ' || c > '~';
+                  })) {
+                ESP_LOGW("display_notice", "Expected an HTTP(S) URL up to 160 bytes");
+                return;
+              }
+              lv_qrcode_set_quiet_zone(id(notice_qr), true);
+              if (lv_qrcode_update(id(notice_qr), qr_url.c_str(), qr_url.size()) != LV_RESULT_OK) {
+                ESP_LOGW("display_notice", "Could not render QR code");
+                return;
+              }
+            }
+
+            lv_label_set_text(id(notice_message), has_message ? message.c_str() : "");
+            lv_obj_set_height(id(notice_message), has_qr ? 64 : 174);
+            lv_obj_align(id(notice_message), LV_ALIGN_CENTER, 0, has_qr ? -128 : 0);
+            if (has_qr) {
+              lv_obj_align(id(notice_qr_frame), LV_ALIGN_CENTER, 0, has_message ? 55 : 0);
+              lv_obj_clear_flag(id(notice_qr_frame), LV_OBJ_FLAG_HIDDEN);
+            } else {
+              lv_obj_add_flag(id(notice_qr_frame), LV_OBJ_FLAG_HIDDEN);
+            }
+            id(notice_active) = true;
+            lv_obj_clear_flag(id(notice_overlay), LV_OBJ_FLAG_HIDDEN);
+            id(apply_brightness).execute();
+            id(notice_timeout).execute(duration_seconds);
+    - action: dismiss_notice
+      then:
+        - script.stop: notice_timeout
+        - script.execute: clear_notice
+
+globals:
+  - id: notice_active
+    type: bool
+    initial_value: 'false'
+
+binary_sensor:
+  - platform: template
+    name: Notice Active
+    entity_category: diagnostic
+    device_class: running
+    disabled_by_default: true
+    lambda: return id(notice_active);
+
+script:
+  - id: notice_timeout
+    mode: restart
+    parameters:
+      duration_seconds: int
+    then:
+      - delay: !lambda return duration_seconds * 1000U;
+      - script.execute: clear_notice
+  - id: clear_notice
+    then:
+      - lambda: |-
+          id(notice_active) = false;
+          lv_obj_add_flag(id(notice_overlay), LV_OBJ_FLAG_HIDDEN);
+          lv_label_set_text(id(notice_message), "");
+          id(apply_brightness).execute();
+
+font:
+  - file: "gfonts://Inter@500"
+    id: f_notice
+    size: 28
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["ÆØÅæøåÉé", "–", "—", "’"]
+
+lvgl:
+  top_layer:
+    widgets:
+      - obj:
+          id: notice_overlay
+          styles: bare
+          align: CENTER
+          width: 480
+          height: 480
+          radius: 0
+          bg_color: 0x170D11
+          bg_opa: COVER
+          hidden: true
+          scrollable: false
+          widgets:
+            - label:
+                id: notice_message
+                align: CENTER
+                width: 310
+                height: 64
+                long_mode: DOT
+                text_align: CENTER
+                text_font: f_notice
+                text_color: 0xFFF2DF
+                text: ''
+            - obj:
+                id: notice_qr_frame
+                styles: bare
+                align: CENTER
+                width: 256
+                height: 256
+                radius: 10
+                bg_color: 0xFFFFFF
+                bg_opa: COVER
+                hidden: true
+                scrollable: false
+                widgets:
+                  - qrcode:
+                      id: notice_qr
+                      align: CENTER
+                      size: 224

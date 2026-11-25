@@ -78,7 +78,7 @@ esp32_ble_tracker:
     active: false
 
 bluetooth_proxy:
-  active: false
+  active: true
 
 # Onboard PDM mic: clock GPIO48, data GPIO47. ESPHome takes the PDM clock on the lrclk pin.
 i2s_audio:
